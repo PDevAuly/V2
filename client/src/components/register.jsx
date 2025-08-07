@@ -34,7 +34,7 @@ const Register = ({ onSwitch }) => {
   };
 
   return (
-    <div className="login-wrapper">
+    <div className="register-page">
       <header className="logo">
         <img src="/pauly_logo4.png" alt="Pauly Logo" />
       </header>
@@ -47,10 +47,38 @@ const Register = ({ onSwitch }) => {
             </header>
 
             <div className="field-set">
-              <input className="form-input" type="text" placeholder="Vorname" value={vorname} onChange={(e) => setVorname(e.target.value)} required />
-              <input className="form-input" type="text" placeholder="Nachname" value={nachname} onChange={(e) => setNachname(e.target.value)} required />
-              <input className="form-input" type="email" placeholder="E-Mail" value={email} onChange={(e) => setEmail(e.target.value)} required />
-              <input className="form-input" type="password" placeholder="Passwort" value={passwort} onChange={(e) => setPasswort(e.target.value)} required />
+              <input 
+                className="form-input" 
+                type="text" 
+                placeholder="Vorname" 
+                value={vorname} 
+                onChange={(e) => setVorname(e.target.value)} 
+                required 
+              />
+              <input 
+                className="form-input" 
+                type="text" 
+                placeholder="Nachname" 
+                value={nachname} 
+                onChange={(e) => setNachname(e.target.value)} 
+                required 
+              />
+              <input 
+                className="form-input" 
+                type="email" 
+                placeholder="E-Mail" 
+                value={email} 
+                onChange={(e) => setEmail(e.target.value)} 
+                required 
+              />
+              <input 
+                className="form-input" 
+                type="password" 
+                placeholder="Passwort" 
+                value={passwort} 
+                onChange={(e) => setPasswort(e.target.value)} 
+                required 
+              />
 
               <button type="submit" className="log-in">Registrieren</button>
             </div>

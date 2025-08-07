@@ -29,7 +29,7 @@ const Login = ({ onSwitch, onLoginSuccess }) => {
   };
 
   return (
-    <div className="login-wrapper">
+    <div className="login-page">
       <header className="logo">
         <img src="/pauly_logo4.png" alt="Pauly Logo" />
       </header>
