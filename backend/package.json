@@ -2,15 +2,14 @@
   "name": "server",
   "version": "1.0.0",
   "main": "server.js",
-  "type": "module",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "cors": "latest",
-    "dotenv": "latest",
-    "express": "latest",
-    "pg": "latest",
-    "bcrypt": "latest"
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "pg": "^8.11.3",
+    "bcrypt": "^5.1.1"
   }
 }
