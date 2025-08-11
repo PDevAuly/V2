@@ -1,6 +1,6 @@
 // backend/routes/kalkulationen.js - Angepasst an deine Tabellen-Struktur
-const express = require('express');
-const { Pool } = require('pg');
+import express from 'express';
+import { Pool } from 'pg';
 const router = express.Router();
 
 // PostgreSQL Connection

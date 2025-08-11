@@ -1,12 +1,37 @@
 import React, { useState, useEffect } from 'react';
-import { User, Clock, UserPlus, ChevronRight, Settings, Bell, Search, Calculator, TrendingUp } from 'lucide-react';
+import {
+  User,
+  Clock,
+  UserPlus,
+  ChevronRight,
+  Settings,
+  Bell,
+  RotateCcw,
+  Calculator,
+  TrendingUp
+} from 'lucide-react';
 
 export default function Dashboard() {
   const [activeSection, setActiveSection] = useState('overview');
   const [showProfile, setShowProfile] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // State für echte Daten
+  // ---- API Base (Env -> Fallback auf /api für Proxy/Ingress) ----
+  const API_BASE =
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE) ||
+    (typeof process !== 'undefined' && process.env?.REACT_APP_API_BASE) ||
+    '/api';
+
+  // ---- Helpers ----
+  const euro = (n) =>
+    new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(Number(n || 0));
+
+  const getJson = async (res) =>
+    res.ok
+      ? res.json()
+      : Promise.reject(await res.json().catch(() => ({ error: res.statusText || 'Request failed' })));
+
+  // ---- State für echte Daten ----
   const [stats, setStats] = useState({
     activeCustomers: 0,
     runningProjects: 0,
@@ -16,7 +41,7 @@ export default function Dashboard() {
   const [customers, setCustomers] = useState([]);
   const [kalkulationen, setKalkulationen] = useState([]);
 
-  // Form States
+  // ---- Form States ----
   const [customerForm, setCustomerForm] = useState({
     firmenname: '',
     strasse: '',
@@ -36,60 +61,56 @@ export default function Dashboard() {
 
   const [calculationForm, setCalculationForm] = useState({
     kunde_id: '',
-    stundensatz: '85',
-    dienstleistungen: [
-      { beschreibung: '', dauer_pro_einheit: '', anzahl: 1, info: '' }
-    ]
+    stundensatz: 85, // Zahl!
+    dienstleistungen: [{ beschreibung: '', dauer_pro_einheit: 0, anzahl: 1, info: '' }]
   });
 
-  // API Base URL
-  const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
-
-  // Daten beim Laden abrufen
+  // ---- Daten beim Laden abrufen ----
   useEffect(() => {
     loadDashboardData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadDashboardData = async () => {
     try {
       setLoading(true);
+
+      // Backend PING
+      const testRes = await fetch(`${API_BASE}/test`);
+      if (!testRes.ok) throw new Error('Backend nicht erreichbar');
+
       const [statsRes, customersRes, kalkulationenRes] = await Promise.all([
         fetch(`${API_BASE}/kalkulationen/stats`),
         fetch(`${API_BASE}/customers`),
         fetch(`${API_BASE}/kalkulationen`)
       ]);
 
-      if (statsRes.ok) setStats(await statsRes.json());
-      if (customersRes.ok) setCustomers(await customersRes.json());
-      if (kalkulationenRes.ok) setKalkulationen(await kalkulationenRes.json());
+      const [statsData, customersData, kalkulationenData] = await Promise.all([
+        getJson(statsRes),
+        getJson(customersRes),
+        getJson(kalkulationenRes)
+      ]);
+
+      setStats(
+        statsData ?? { activeCustomers: 0, runningProjects: 0, monthlyHours: 0, monthlyRevenue: 0 }
+      );
+      setCustomers(customersData ?? []);
+      setKalkulationen(kalkulationenData ?? []);
     } catch (error) {
-      console.error('Error loading dashboard data:', error);
+      console.warn('Fallback auf Mock-Daten:', error);
+      setStats({ activeCustomers: 12, runningProjects: 8, monthlyHours: 156, monthlyRevenue: 13200 });
     } finally {
       setLoading(false);
     }
   };
 
   const menuItems = [
-    {
-      id: 'overview',
-      label: 'Übersicht',
-      icon: TrendingUp,
-      color: 'text-blue-600'
-    },
-    {
-      id: 'neukunde',
-      label: 'Neukunde erfassen',
-      icon: UserPlus,
-      color: 'text-green-600'
-    },
-    {
-      id: 'stundenkalkulation',
-      label: 'Stundenkalkulation',
-      icon: Calculator,
-      color: 'text-purple-600'
-    }
+    { id: 'overview', label: 'Übersicht', icon: TrendingUp, color: 'text-blue-600' },
+    { id: 'neukunde', label: 'Neukunde erfassen', icon: UserPlus, color: 'text-green-600' },
+    { id: 'stundenkalkulation', label: 'Stundenkalkulation', icon: Calculator, color: 'text-purple-600' }
   ];
 
+  // ---- Customer Submit ----
   const handleCustomerSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -97,218 +118,214 @@ export default function Dashboard() {
     try {
       const response = await fetch(`${API_BASE}/customers`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(customerForm),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(customerForm)
       });
 
-      const data = await response.json();
-
-      if (response.ok) {
-        alert('Kunde wurde erfolgreich erstellt!');
-        setCustomerForm({
-          firmenname: '',
-          strasse: '',
-          hausnummer: '',
-          ort: '',
-          plz: '',
-          telefonnummer: '',
-          email: '',
-          ansprechpartner: { name: '', vorname: '', email: '', telefonnummer: '', position: '' }
-        });
-        loadDashboardData(); // Daten neu laden
-      } else {
-        alert(`Fehler: ${data.error}`);
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        return alert(`❌ Fehler: ${err.error || response.statusText}`);
       }
+
+      alert('✅ Kunde wurde erfolgreich erstellt!');
+      setCustomerForm({
+        firmenname: '',
+        strasse: '',
+        hausnummer: '',
+        ort: '',
+        plz: '',
+        telefonnummer: '',
+        email: '',
+        ansprechpartner: { name: '', vorname: '', email: '', telefonnummer: '', position: '' }
+      });
+      await loadDashboardData();
     } catch (error) {
       console.error('Error creating customer:', error);
-      alert('Fehler beim Erstellen des Kunden');
+      alert('❌ Fehler beim Erstellen des Kunden - Backend nicht erreichbar');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCalculationSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-
-    try {
-      const response = await fetch(`${API_BASE}/kalkulationen`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(calculationForm),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        alert('Kalkulation wurde erfolgreich erstellt!');
-        setCalculationForm({
-          kunde_id: '',
-          stundensatz: '85',
-          dienstleistungen: [{ beschreibung: '', dauer_pro_einheit: '', anzahl: 1, info: '' }]
-        });
-        loadDashboardData(); // Daten neu laden
-      } else {
-        alert(`Fehler: ${data.error}`);
-      }
-    } catch (error) {
-      console.error('Error creating calculation:', error);
-      alert('Fehler beim Erstellen der Kalkulation');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const calculateTotal = () => {
-    let total = 0;
-    calculationForm.dienstleistungen.forEach(dienst => {
-      const dauer = parseFloat(dienst.dauer_pro_einheit) || 0;
-      const anzahl = parseInt(dienst.anzahl) || 1;
-      total += dauer * anzahl;
-    });
-    return (total * parseFloat(calculationForm.stundensatz || 0)).toFixed(2);
-  };
-
+  // ---- Calculation helpers ----
   const addDienstleistung = () => {
-    setCalculationForm({
-      ...calculationForm,
-      dienstleistungen: [
-        ...calculationForm.dienstleistungen,
-        { beschreibung: '', dauer_pro_einheit: '', anzahl: 1, info: '' }
-      ]
-    });
+    setCalculationForm((prev) => ({
+      ...prev,
+      dienstleistungen: [...prev.dienstleistungen, { beschreibung: '', dauer_pro_einheit: 0, anzahl: 1, info: '' }]
+    }));
   };
 
   const removeDienstleistung = (index) => {
-    const newDienstleistungen = calculationForm.dienstleistungen.filter((_, i) => i !== index);
-    setCalculationForm({
-      ...calculationForm,
-      dienstleistungen: newDienstleistungen
-    });
+    setCalculationForm((prev) => ({
+      ...prev,
+      dienstleistungen: prev.dienstleistungen.filter((_, i) => i !== index)
+    }));
   };
 
   const updateDienstleistung = (index, field, value) => {
-    const newDienstleistungen = [...calculationForm.dienstleistungen];
-    newDienstleistungen[index][field] = value;
-    setCalculationForm({
-      ...calculationForm,
-      dienstleistungen: newDienstleistungen
+    setCalculationForm((prev) => {
+      const newList = [...prev.dienstleistungen];
+      newList[index] = { ...newList[index], [field]: value };
+      return { ...prev, dienstleistungen: newList };
     });
   };
 
+  const calculateTotal = () => {
+    const sumHours = calculationForm.dienstleistungen.reduce(
+      (acc, d) => acc + (Number(d.dauer_pro_einheit) || 0) * (Number(d.anzahl) || 1),
+      0
+    );
+    return sumHours * Number(calculationForm.stundensatz || 0);
+  };
+
+  // ---- Calculation Submit ----
+  const handleCalculationSubmit = async (e) => {
+    e.preventDefault();
+
+    // simple Validierung
+    if (!calculationForm.kunde_id) {
+      return alert('Bitte einen Kunden auswählen.');
+    }
+    if (
+      calculationForm.dienstleistungen.length === 0 ||
+      calculationForm.dienstleistungen.some((d) => !d.beschreibung || !Number(d.dauer_pro_einheit))
+    ) {
+      return alert('Bitte alle Dienstleistungen vollständig ausfüllen.');
+    }
+
+    setLoading(true);
+
+    try {
+      const payload = {
+        ...calculationForm,
+        stundensatz: Number(calculationForm.stundensatz),
+        dienstleistungen: calculationForm.dienstleistungen.map((d) => ({
+          ...d,
+          dauer_pro_einheit: Number(d.dauer_pro_einheit),
+          anzahl: Number(d.anzahl || 1)
+        }))
+      };
+
+      const response = await fetch(`${API_BASE}/kalkulationen`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        return alert(`❌ Fehler: ${err.error || response.statusText}`);
+      }
+
+      alert('✅ Kalkulation wurde erfolgreich erstellt!');
+      setCalculationForm({
+        kunde_id: '',
+        stundensatz: 85,
+        dienstleistungen: [{ beschreibung: '', dauer_pro_einheit: 0, anzahl: 1, info: '' }]
+      });
+      await loadDashboardData();
+    } catch (error) {
+      console.error('Error creating calculation:', error);
+      alert('❌ Fehler beim Erstellen der Kalkulation - Backend nicht erreichbar');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ---- Content Switch ----
   const renderContent = () => {
-    switch(activeSection) {
+    switch (activeSection) {
       case 'neukunde':
         return (
           <div className="max-w-4xl">
             <div className="bg-white rounded-lg shadow-sm border border-gray-200">
               <div className="px-6 py-4 border-b border-gray-200">
                 <h3 className="text-lg font-medium text-gray-900">Neuen Kunden erfassen</h3>
-                <p className="text-sm text-gray-500 mt-1">
-                  Vollständige Kundendaten für das System
-                </p>
+                <p className="text-sm text-gray-500 mt-1">Vollständige Kundendaten für das System</p>
               </div>
-              
+
               <form onSubmit={handleCustomerSubmit} className="p-6 space-y-6">
                 {/* Firmendaten */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Firmenname *
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Firmenname *</label>
                     <input
                       type="text"
                       required
                       value={customerForm.firmenname}
-                      onChange={(e) => setCustomerForm({...customerForm, firmenname: e.target.value})}
+                      onChange={(e) => setCustomerForm({ ...customerForm, firmenname: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="Firmenname"
                     />
                   </div>
-                  
+
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      E-Mail *
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">E-Mail *</label>
                     <input
                       type="email"
                       required
                       value={customerForm.email}
-                      onChange={(e) => setCustomerForm({...customerForm, email: e.target.value})}
+                      onChange={(e) => setCustomerForm({ ...customerForm, email: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="firma@example.com"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Straße *
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Straße *</label>
                     <input
                       type="text"
                       required
                       value={customerForm.strasse}
-                      onChange={(e) => setCustomerForm({...customerForm, strasse: e.target.value})}
+                      onChange={(e) => setCustomerForm({ ...customerForm, strasse: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="Musterstraße"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Hausnummer *
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Hausnummer *</label>
                     <input
                       type="text"
                       required
                       value={customerForm.hausnummer}
-                      onChange={(e) => setCustomerForm({...customerForm, hausnummer: e.target.value})}
+                      onChange={(e) => setCustomerForm({ ...customerForm, hausnummer: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="123a"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      PLZ *
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">PLZ *</label>
                     <input
                       type="text"
                       required
                       value={customerForm.plz}
-                      onChange={(e) => setCustomerForm({...customerForm, plz: e.target.value})}
+                      onChange={(e) => setCustomerForm({ ...customerForm, plz: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="12345"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Ort *
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Ort *</label>
                     <input
                       type="text"
                       required
                       value={customerForm.ort}
-                      onChange={(e) => setCustomerForm({...customerForm, ort: e.target.value})}
+                      onChange={(e) => setCustomerForm({ ...customerForm, ort: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="Musterstadt"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Telefon *
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Telefon *</label>
                     <input
                       type="tel"
                       required
                       value={customerForm.telefonnummer}
-                      onChange={(e) => setCustomerForm({...customerForm, telefonnummer: e.target.value})}
+                      onChange={(e) => setCustomerForm({ ...customerForm, telefonnummer: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="+49 123 456789"
                     />
@@ -320,55 +337,55 @@ export default function Dashboard() {
                   <h4 className="text-md font-medium text-gray-900 mb-4">Ansprechpartner (optional)</h4>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Vorname
-                      </label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Vorname</label>
                       <input
                         type="text"
                         value={customerForm.ansprechpartner.vorname}
-                        onChange={(e) => setCustomerForm({
-                          ...customerForm, 
-                          ansprechpartner: {...customerForm.ansprechpartner, vorname: e.target.value}
-                        })}
+                        onChange={(e) =>
+                          setCustomerForm({
+                            ...customerForm,
+                            ansprechpartner: { ...customerForm.ansprechpartner, vorname: e.target.value }
+                          })
+                        }
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="Max"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Nachname
-                      </label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Nachname</label>
                       <input
                         type="text"
                         value={customerForm.ansprechpartner.name}
-                        onChange={(e) => setCustomerForm({
-                          ...customerForm, 
-                          ansprechpartner: {...customerForm.ansprechpartner, name: e.target.value}
-                        })}
+                        onChange={(e) =>
+                          setCustomerForm({
+                            ...customerForm,
+                            ansprechpartner: { ...customerForm.ansprechpartner, name: e.target.value }
+                          })
+                        }
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="Mustermann"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Position
-                      </label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Position</label>
                       <input
                         type="text"
                         value={customerForm.ansprechpartner.position}
-                        onChange={(e) => setCustomerForm({
-                          ...customerForm, 
-                          ansprechpartner: {...customerForm.ansprechpartner, position: e.target.value}
-                        })}
+                        onChange={(e) =>
+                          setCustomerForm({
+                            ...customerForm,
+                            ansprechpartner: { ...customerForm.ansprechpartner, position: e.target.value }
+                          })
+                        }
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="IT-Leiter"
                       />
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="flex justify-end">
                   <button
                     type="submit"
@@ -389,21 +406,17 @@ export default function Dashboard() {
             <div className="bg-white rounded-lg shadow-sm border border-gray-200">
               <div className="px-6 py-4 border-b border-gray-200">
                 <h3 className="text-lg font-medium text-gray-900">Stundenkalkulation erstellen</h3>
-                <p className="text-sm text-gray-500 mt-1">
-                  Neue Kalkulation mit Dienstleistungen
-                </p>
+                <p className="text-sm text-gray-500 mt-1">Neue Kalkulation mit Dienstleistungen</p>
               </div>
-              
+
               <form onSubmit={handleCalculationSubmit} className="p-6 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Kunde auswählen *
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Kunde auswählen *</label>
                     <select
                       required
                       value={calculationForm.kunde_id}
-                      onChange={(e) => setCalculationForm({...calculationForm, kunde_id: e.target.value})}
+                      onChange={(e) => setCalculationForm({ ...calculationForm, kunde_id: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="">Kunde wählen...</option>
@@ -414,17 +427,17 @@ export default function Dashboard() {
                       ))}
                     </select>
                   </div>
-                  
+
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Stundensatz (€) *
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Stundensatz (€) *</label>
                     <input
                       type="number"
                       required
                       step="0.01"
                       value={calculationForm.stundensatz}
-                      onChange={(e) => setCalculationForm({...calculationForm, stundensatz: e.target.value})}
+                      onChange={(e) =>
+                        setCalculationForm({ ...calculationForm, stundensatz: Number(e.target.value) })
+                      }
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="85.00"
                     />
@@ -447,9 +460,7 @@ export default function Dashboard() {
                   {calculationForm.dienstleistungen.map((dienst, index) => (
                     <div key={index} className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4 p-4 bg-gray-50 rounded-md">
                       <div className="md:col-span-2">
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                          Beschreibung *
-                        </label>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Beschreibung *</label>
                         <input
                           type="text"
                           required
@@ -461,29 +472,25 @@ export default function Dashboard() {
                       </div>
 
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                          Stunden pro Einheit *
-                        </label>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Stunden pro Einheit *</label>
                         <input
                           type="number"
                           required
                           step="0.5"
                           value={dienst.dauer_pro_einheit}
-                          onChange={(e) => updateDienstleistung(index, 'dauer_pro_einheit', e.target.value)}
+                          onChange={(e) => updateDienstleistung(index, 'dauer_pro_einheit', Number(e.target.value))}
                           className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
                           placeholder="2.0"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                          Anzahl
-                        </label>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Anzahl</label>
                         <input
                           type="number"
                           min="1"
                           value={dienst.anzahl}
-                          onChange={(e) => updateDienstleistung(index, 'anzahl', e.target.value)}
+                          onChange={(e) => updateDienstleistung(index, 'anzahl', Number(e.target.value))}
                           className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
                       </div>
@@ -502,18 +509,17 @@ export default function Dashboard() {
                     </div>
                   ))}
                 </div>
-                
-                {calculationForm.stundensatz && calculationForm.dienstleistungen.some(d => d.dauer_pro_einheit) && (
-                  <div className="bg-blue-50 p-4 rounded-md border border-blue-200">
-                    <div className="text-center">
-                      <p className="text-sm text-blue-600 mb-2">Geschätzte Gesamtkosten</p>
-                      <p className="text-3xl font-bold text-blue-900">
-                        € {calculateTotal()}
-                      </p>
+
+                {Number(calculationForm.stundensatz) > 0 &&
+                  calculationForm.dienstleistungen.some((d) => Number(d.dauer_pro_einheit) > 0) && (
+                    <div className="bg-blue-50 p-4 rounded-md border border-blue-200">
+                      <div className="text-center">
+                        <p className="text-sm text-blue-600 mb-2">Geschätzte Gesamtkosten</p>
+                        <p className="text-3xl font-bold text-blue-900">{euro(calculateTotal())}</p>
+                      </div>
                     </div>
-                  </div>
-                )}
-                
+                  )}
+
                 <div className="flex justify-end">
                   <button
                     type="submit"
@@ -536,7 +542,7 @@ export default function Dashboard() {
               <p className="text-gray-600">Aktuelle Statistiken und laufende Projekte</p>
             </div>
 
-            {/* Stats Cards mit echten Daten */}
+            {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
                 <div className="flex items-center">
@@ -589,7 +595,7 @@ export default function Dashboard() {
                   </div>
                   <div className="ml-4">
                     <p className="text-sm font-medium text-gray-600">Umsatz (Monat)</p>
-                    <p className="text-2xl font-semibold text-gray-900">€ {Math.round(stats.monthlyRevenue).toLocaleString()}</p>
+                    <p className="text-2xl font-semibold text-gray-900">{euro(stats.monthlyRevenue)}</p>
                   </div>
                 </div>
               </div>
@@ -600,7 +606,7 @@ export default function Dashboard() {
               <div className="px-6 py-4 border-b border-gray-200">
                 <h3 className="text-lg font-medium text-gray-900">Aktuelle Kalkulationen</h3>
               </div>
-              
+
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
@@ -626,26 +632,38 @@ export default function Dashboard() {
                     {kalkulationen.slice(0, 5).map((kalkulation) => (
                       <tr key={kalkulation.kalkulations_id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm font-medium text-gray-900">{kalkulation.kunde_name}</span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm text-gray-900">
-                            {new Date(kalkulation.datum).toLocaleDateString('de-DE')}
+                          <span className="text-sm font-medium text-gray-900">
+                            {kalkulation.kunde_name || kalkulation.firmenname || '—'}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm text-gray-900">{kalkulation.gesamtzeit}h</span>
+                          <span className="text-sm text-gray-900">
+                            {kalkulation.datum
+                              ? new Date(kalkulation.datum).toLocaleDateString('de-DE')
+                              : '—'}
+                          </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm text-gray-900">€ {parseFloat(kalkulation.gesamtpreis).toLocaleString()}</span>
+                          <span className="text-sm text-gray-900">
+                            {Number(kalkulation.gesamtzeit || 0)}h
+                          </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                            kalkulation.status === 'erledigt' ? 'bg-green-100 text-green-800' :
-                            kalkulation.status === 'in Arbeit' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-blue-100 text-blue-800'
-                          }`}>
-                            {kalkulation.status}
+                          <span className="text-sm text-gray-900">
+                            {euro(kalkulation.gesamtpreis)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span
+                            className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                              kalkulation.status === 'erledigt'
+                                ? 'bg-green-100 text-green-800'
+                                : kalkulation.status === 'in Arbeit'
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : 'bg-blue-100 text-blue-800'
+                            }`}
+                          >
+                            {kalkulation.status || 'neu'}
                           </span>
                         </td>
                       </tr>
@@ -661,6 +679,13 @@ export default function Dashboard() {
 
   return (
     <div className="h-screen bg-gray-50 flex">
+      {/* Loading Overlay */}
+      {loading && (
+        <div className="fixed inset-0 bg-black/10 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white px-4 py-2 rounded shadow">Lade Daten…</div>
+        </div>
+      )}
+
       {/* Sidebar */}
       <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
         {/* Logo/Brand */}
@@ -670,22 +695,18 @@ export default function Dashboard() {
 
         {/* Navigation */}
         <nav className="flex-1 p-4 space-y-2">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-            BEREICHE
-          </div>
-          
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">BEREICHE</div>
+
           {menuItems.map((item) => {
             const IconComponent = item.icon;
             const isActive = activeSection === item.id;
-            
+
             return (
               <button
                 key={item.id}
                 onClick={() => setActiveSection(item.id)}
                 className={`w-full flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                  isActive 
-                    ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-600' 
-                    : 'text-gray-700 hover:bg-gray-100'
+                  isActive ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-600' : 'text-gray-700 hover:bg-gray-100'
                 }`}
               >
                 <IconComponent className={`w-4 h-4 ${isActive ? 'text-blue-600' : 'text-gray-500'}`} />
@@ -698,9 +719,7 @@ export default function Dashboard() {
 
         {/* Bottom Section */}
         <div className="p-4 border-t border-gray-200">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-            TOOLS
-          </div>
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">TOOLS</div>
           <button className="w-full flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100">
             <Settings className="w-4 h-4 text-gray-500" />
             <span>Einstellungen</span>
@@ -714,22 +733,22 @@ export default function Dashboard() {
         <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <h2 className="text-2xl font-semibold text-gray-900">
-              {menuItems.find(item => item.id === activeSection)?.label || 'Dashboard'}
+              {menuItems.find((item) => item.id === activeSection)?.label || 'Dashboard'}
             </h2>
           </div>
-          
+
           <div className="flex items-center space-x-3">
-            <button 
+            <button
               onClick={loadDashboardData}
               className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md"
               title="Daten aktualisieren"
             >
-              <Search className="w-5 h-5" />
+              <RotateCcw className="w-5 h-5" />
             </button>
             <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md">
               <Bell className="w-5 h-5" />
             </button>
-            
+
             {/* Profile Button */}
             <div className="relative">
               <button
@@ -740,7 +759,7 @@ export default function Dashboard() {
                   <User className="w-4 h-4 text-white" />
                 </div>
               </button>
-              
+
               {/* Profile Dropdown */}
               {showProfile && (
                 <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-10">
@@ -767,9 +786,7 @@ export default function Dashboard() {
         </header>
 
         {/* Content Area */}
-        <main className="flex-1 p-6 overflow-auto">
-          {renderContent()}
-        </main>
+        <main className="flex-1 p-6 overflow-auto">{renderContent()}</main>
       </div>
     </div>
   );
