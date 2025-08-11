@@ -1,4 +1,4 @@
-// backend/server.js - API passend zum Dashboard (mit Health, Zahlen-Casts, sauberem CORS)
+// backend/server.js - API passend zum Dashboard (mit Health, JSONB-Onboarding, Zahlencasts)
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
@@ -20,12 +20,12 @@ app.use(
       : undefined
   )
 );
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '2mb' }));
 
 /* ===================== DB Connection ===================== */
 const pool = new Pool({
   user: process.env.PGUSER || 'postgres',
-  host: process.env.PGHOST || 'db',
+  host: process.env.PGHOST || 'db', // Docker-Service-Name
   database: process.env.PGDATABASE || 'postgres',
   password: process.env.PGPASSWORD || 'pauly2026!',
   port: process.env.PGPORT || 5432,
@@ -215,24 +215,22 @@ app.post('/api/customers', async (req, res) => {
 });
 
 /* ===================== Kalkulationen ===================== */
-
-// Stats, exakt wie vom Dashboard erwartet: activeCustomers, runningProjects, monthlyHours, monthlyRevenue
 app.get('/api/kalkulationen/stats', async (req, res) => {
   try {
     const [kundenCount, aktiveProjekte, monatsStunden, monatsUmsatz] = await Promise.all([
       pool.query('SELECT COUNT(*) FROM kunde'),
-      pool.query("SELECT COUNT(*) FROM onboarding WHERE status IN (\'neu\', \'in Arbeit\')"),
+      pool.query("SELECT COUNT(*) FROM onboarding WHERE status IN ('neu', 'in Arbeit')"),
       pool.query(`
         SELECT COALESCE(SUM(gesamtzeit), 0) AS total_hours
         FROM kalkulation 
         WHERE EXTRACT(MONTH FROM datum) = EXTRACT(MONTH FROM CURRENT_DATE)
-          AND EXTRACT(YEAR FROM datum)  = EXTRACT(YEAR FROM CURRENT_DATE)
+          AND EXTRACT(YEAR  FROM datum) = EXTRACT(YEAR FROM CURRENT_DATE)
       `),
       pool.query(`
         SELECT COALESCE(SUM(gesamtpreis), 0) AS total_revenue
         FROM kalkulation 
         WHERE EXTRACT(MONTH FROM datum) = EXTRACT(MONTH FROM CURRENT_DATE)
-          AND EXTRACT(YEAR FROM datum)  = EXTRACT(YEAR FROM CURRENT_DATE)
+          AND EXTRACT(YEAR  FROM datum) = EXTRACT(YEAR FROM CURRENT_DATE)
           AND status = 'erledigt'
       `),
     ]);
@@ -252,8 +250,6 @@ app.get('/api/kalkulationen/stats', async (req, res) => {
   }
 });
 
-// Liste der Kalkulationen mit Feldern exakt wie im Frontend genutzt.
-// WICHTIG: numerische Felder als float casten, damit im FE keine Strings ankommen.
 app.get('/api/kalkulationen', async (req, res) => {
   try {
     const result = await pool.query(`
@@ -268,7 +264,7 @@ app.get('/api/kalkulationen', async (req, res) => {
         m.name                  AS mitarbeiter_name,
         m.vorname               AS mitarbeiter_vorname
       FROM kalkulation k
-      JOIN kunde ku         ON k.kunde_id = ku.kunden_id
+      JOIN kunde ku           ON k.kunde_id = ku.kunden_id
       LEFT JOIN mitarbeiter m ON k.mitarbeiter_id = m.mitarbeiter_id
       ORDER BY k.datum DESC
       LIMIT 10
@@ -344,6 +340,53 @@ app.post('/api/kalkulationen', async (req, res) => {
   }
 });
 
+/* ===================== Onboarding (JSONB) ===================== */
+/**
+ * Erwartet:
+ * {
+ *   kunde_id: number,
+ *   infrastructure_data: object,  // z.B. { internet: {...}, users: {...}, hardware: { verwendete_hardware: [...] }, ... }
+ *   mitarbeiter_id?: number
+ * }
+ * Schreibt: onboarding (datum, status='neu', mitarbeiter_id, kunde_id) + setzt onboarding.infrastructure_data = JSONB
+ */
+app.post('/api/onboarding', async (req, res) => {
+  try {
+    const { kunde_id, infrastructure_data, mitarbeiter_id } = req.body;
+    if (!kunde_id || !infrastructure_data) {
+      return res.status(400).json({ error: 'kunde_id und infrastructure_data sind erforderlich' });
+    }
+
+    await pool.query('BEGIN');
+    try {
+      const ins = await pool.query(
+        `INSERT INTO onboarding (datum, status, mitarbeiter_id, kunde_id)
+         VALUES (CURRENT_DATE, 'neu', $1, $2)
+         RETURNING onboarding_id`,
+        [mitarbeiter_id || 1, kunde_id]
+      );
+
+      const onboardingId = ins.rows[0].onboarding_id;
+
+      await pool.query(
+        `UPDATE onboarding
+         SET infrastructure_data = $1::jsonb
+         WHERE onboarding_id = $2`,
+        [JSON.stringify(infrastructure_data), onboardingId]
+      );
+
+      await pool.query('COMMIT');
+      res.status(201).json({ message: 'Onboarding angelegt', onboarding_id: onboardingId });
+    } catch (e) {
+      await pool.query('ROLLBACK');
+      throw e;
+    }
+  } catch (err) {
+    console.error('Onboarding Error:', err);
+    res.status(500).json({ error: 'Fehler beim Anlegen des Onboardings: ' + err.message });
+  }
+});
+
 /* ===================== 404 ===================== */
 app.use('*', (req, res) => {
   console.log('❓ Route nicht gefunden:', req.originalUrl);
@@ -357,6 +400,7 @@ app.use('*', (req, res) => {
       '/api/customers',
       '/api/kalkulationen',
       '/api/kalkulationen/stats',
+      '/api/onboarding',
     ],
   });
 });
