@@ -286,14 +286,17 @@ app.post('/api/kalkulationen', async (req, res) => {
       return res.status(400).json({ error: 'Kunde, Stundensatz und Dienstleistungen sind erforderlich' });
     }
 
-    // Gesamtzeit berechnen
+    // Gesamtzeit & -preis berechnen (pro Zeile optionaler Stundensatz)
     let gesamtzeit = 0;
-    for (const dienst of dienstleistungen) {
-      const dauer = parseFloat(dienst.dauer_pro_einheit) || 0;
-      const anzahl = parseInt(dienst.anzahl) || 1;
-      gesamtzeit += dauer * anzahl;
+    let gesamtpreis = 0;
+    for (const d of dienstleistungen) {
+      const dauer = parseFloat(d.dauer_pro_einheit) || 0;
+      const anzahl = parseInt(d.anzahl) || 1;
+      const stunden = dauer * anzahl;
+      const zeilenSatz = (d.stundensatz != null && d.stundensatz !== '') ? Number(d.stundensatz) : Number(stundensatz);
+      gesamtzeit  += stunden;
+      gesamtpreis += stunden * zeilenSatz;
     }
-    const gesamtpreis = gesamtzeit * parseFloat(stundensatz);
 
     await pool.query('BEGIN');
     try {
@@ -309,23 +312,22 @@ app.post('/api/kalkulationen', async (req, res) => {
 
       const neueKalkulation = calcRes.rows[0];
 
-      for (const dienst of dienstleistungen) {
-        const dauer = parseFloat(dienst.dauer_pro_einheit) || 0;
-        const anzahl = parseInt(dienst.anzahl) || 1;
+      for (const d of dienstleistungen) {
+        const dauer = parseFloat(d.dauer_pro_einheit) || 0;
+        const anzahl = parseInt(d.anzahl) || 1;
         const gesamtdauer = dauer * anzahl;
+        const zeilenSatz = (d.stundensatz != null && d.stundensatz !== '') ? Number(d.stundensatz) : null;
 
         await pool.query(
           `
-          INSERT INTO dienstleistung (beschreibung, dauer_pro_einheit, anzahl, gesamtdauer, info, kalkulation_id)
-          VALUES ($1, $2, $3, $4, $5, $6)
+          INSERT INTO dienstleistung (beschreibung, dauer_pro_einheit, anzahl, gesamtdauer, info, kalkulation_id, stundensatz)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
           `,
-          [dienst.beschreibung, dauer, anzahl, gesamtdauer, dienst.info || null, neueKalkulation.kalkulations_id]
+          [d.beschreibung, dauer, anzahl, gesamtdauer, d.info || null, neueKalkulation.kalkulations_id, zeilenSatz]
         );
       }
 
       await pool.query('COMMIT');
-      console.log('✅ Kalkulation erstellt:', neueKalkulation.kalkulations_id);
-
       res.status(201).json({
         message: 'Kalkulation erfolgreich erstellt',
         kalkulation: neueKalkulation,
@@ -340,6 +342,7 @@ app.post('/api/kalkulationen', async (req, res) => {
   }
 });
 
+
 /* ===================== Onboarding (JSONB) ===================== */
 /**
  * Erwartet:
@@ -350,6 +353,7 @@ app.post('/api/kalkulationen', async (req, res) => {
  * }
  * Schreibt: onboarding (datum, status='neu', mitarbeiter_id, kunde_id) + setzt onboarding.infrastructure_data = JSONB
  */
+// ===================== Onboarding (direkt in onboarding.infrastructure_data) =====================
 app.post('/api/onboarding', async (req, res) => {
   try {
     const { kunde_id, infrastructure_data, mitarbeiter_id } = req.body;
@@ -360,32 +364,41 @@ app.post('/api/onboarding', async (req, res) => {
     await pool.query('BEGIN');
     try {
       const ins = await pool.query(
-        `INSERT INTO onboarding (datum, status, mitarbeiter_id, kunde_id)
-         VALUES (CURRENT_DATE, 'neu', $1, $2)
+        `INSERT INTO onboarding (datum, status, mitarbeiter_id, kunde_id, infrastructure_data)
+         VALUES (CURRENT_DATE, 'neu', $1, $2, $3::jsonb)
          RETURNING onboarding_id`,
-        [mitarbeiter_id || 1, kunde_id]
-      );
-
-      const onboardingId = ins.rows[0].onboarding_id;
-
-      await pool.query(
-        `UPDATE onboarding
-         SET infrastructure_data = $1::jsonb
-         WHERE onboarding_id = $2`,
-        [JSON.stringify(infrastructure_data), onboardingId]
+        [mitarbeiter_id || 1, kunde_id, JSON.stringify(infrastructure_data)]
       );
 
       await pool.query('COMMIT');
-      res.status(201).json({ message: 'Onboarding angelegt', onboarding_id: onboardingId });
+      res.status(201).json({ message: 'Onboarding gespeichert', onboarding_id: ins.rows[0].onboarding_id });
     } catch (e) {
       await pool.query('ROLLBACK');
       throw e;
     }
   } catch (err) {
     console.error('Onboarding Error:', err);
-    res.status(500).json({ error: 'Fehler beim Anlegen des Onboardings: ' + err.message });
+    res.status(500).json({ error: 'Fehler beim Speichern des Onboardings: ' + err.message });
   }
 });
+
+// Optional: Einzelnes Onboarding abrufen (inkl. JSON)
+app.get('/api/onboarding/:id', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT onboarding_id, datum, status, mitarbeiter_id, kunde_id, infrastructure_data
+       FROM onboarding
+       WHERE onboarding_id = $1`,
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Nicht gefunden' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('Get Onboarding Error:', err);
+    res.status(500).json({ error: 'Fehler beim Abrufen' });
+  }
+});
+
 
 /* ===================== 404 ===================== */
 app.use('*', (req, res) => {

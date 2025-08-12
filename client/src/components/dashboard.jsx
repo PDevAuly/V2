@@ -4,7 +4,6 @@ import {
   Clock,
   ChevronRight,
   Settings,
-  Bell,
   RotateCcw,
   Calculator,
   TrendingUp,
@@ -55,6 +54,9 @@ console.log('API_BASE =', API_BASE);
     dienstleistungen: [{ beschreibung: '', dauer_pro_einheit: 0, anzahl: 1, info: '' }]
   });
 
+  // MwSt (für Stundenkalkulation)
+const [mwst, setMwst] = useState(19);
+
   // ---- Onboarding States ----
   const [onboardingCustomerData, setOnboardingCustomerData] = useState({
     firmenname: '',
@@ -93,7 +95,7 @@ console.log('API_BASE =', API_BASE);
       usv_vorhanden: false,
       usv_modell: '',
       drucker: [],
-      verwendete_hardware: [] // <- NEU
+      verwendete_hardware: []
     },
     mail: {
       file_server_volumen: '',
@@ -162,7 +164,7 @@ console.log('API_BASE =', API_BASE);
       setKalkulationen(kalkulationenData ?? []);
     } catch (error) {
       console.warn('Fallback auf Mock-Daten:', error);
-      setStats({ activeCustomers: 12, runningProjects: 8, monthlyHours: 156, monthlyRevenue: 13200 });
+      setStats({ activeCustomers: 999, runningProjects: 999, monthlyHours: 999, monthlyRevenue: 99999999 });
     } finally {
       setLoading(false);
     }
@@ -265,14 +267,6 @@ console.log('API_BASE =', API_BASE);
       newList[index] = { ...newList[index], [field]: value };
       return { ...prev, dienstleistungen: newList };
     });
-  };
-
-  const calculateTotal = () => {
-    const sumHours = calculationForm.dienstleistungen.reduce(
-      (acc, d) => acc + (Number(d.dauer_pro_einheit) || 0) * (Number(d.anzahl) || 1),
-      0
-    );
-    return sumHours * Number(calculationForm.stundensatz || 0);
   };
 
   // ---- Calculation Submit ----
@@ -474,53 +468,69 @@ console.log('API_BASE =', API_BASE);
     </div>
   );
 
-  const renderOnboardingStep2 = () => (
-    <div className="space-y-6">
-      {/* Internet & Firewall */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <div className="flex items-center mb-4">
-          <Shield className="w-5 h-5 text-blue-600 mr-2" />
-          <h3 className="text-lg font-medium text-gray-900">Internet & Firewall</h3>
+const renderOnboardingStep2 = () => (
+  <div className="space-y-6">
+    {/* Internet & Firewall */}
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="flex items-center mb-4">
+        <Shield className="w-5 h-5 text-blue-600 mr-2" />
+        <h3 className="text-lg font-medium text-gray-900">Internet & Firewall</h3>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Internetzugang */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Internetzugang</label>
+          <input
+            type="text"
+            value={infrastructureData.internet.zugang}
+            onChange={(e) =>
+              setInfrastructureData({
+                ...infrastructureData,
+                internet: { ...infrastructureData.internet, zugang: e.target.value },
+              })
+            }
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="z.B. DSL 100/40 Mbit, Glasfaser..."
+          />
         </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Internetzugang</label>
-            <input
-              type="text"
-              value={infrastructureData.internet.zugang}
-              onChange={(e) => setInfrastructureData({
-                ...infrastructureData,
-                internet: {...infrastructureData.internet, zugang: e.target.value}
-              })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="z.B. DSL 100/40 Mbit, Glasfaser..."
-            />
-          </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Firewall Modell</label>
-            <input
-              type="text"
-              value={infrastructureData.internet.firewall_modell}
-              onChange={(e) => setInfrastructureData({
+        {/* Firewall Modell */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Firewall Modell</label>
+          <input
+            type="text"
+            value={infrastructureData.internet.firewall_modell}
+            onChange={(e) =>
+              setInfrastructureData({
                 ...infrastructureData,
-                internet: {...infrastructureData.internet, firewall_modell: e.target.value}
-              })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="z.B. Sophos XG 125"
-            />
-          </div>
+                internet: { ...infrastructureData.internet, firewall_modell: e.target.value },
+              })
+            }
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="z.B. Sophos XG 125"
+          />
+        </div>
 
+        {/* Feste IP Checkbox + Eingabe */}
+        <div className="col-span-2">
           <div className="flex items-center">
             <input
               type="checkbox"
               id="feste_ip"
               checked={infrastructureData.internet.feste_ip}
-              onChange={(e) => setInfrastructureData({
-                ...infrastructureData,
-                internet: {...infrastructureData.internet, feste_ip: e.target.checked}
-              })}
+              onChange={(e) =>
+                setInfrastructureData({
+                  ...infrastructureData,
+                  internet: {
+                    ...infrastructureData.internet,
+                    feste_ip: e.target.checked,
+                    ip_adresse: e.target.checked
+                      ? infrastructureData.internet.ip_adresse || ""
+                      : "",
+                  },
+                })
+              }
               className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
             />
             <label htmlFor="feste_ip" className="ml-2 text-sm text-gray-700">
@@ -528,23 +538,54 @@ console.log('API_BASE =', API_BASE);
             </label>
           </div>
 
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="vpn_erforderlich"
-              checked={infrastructureData.internet.vpn_erforderlich}
-              onChange={(e) => setInfrastructureData({
+          {/* Eingabefeld nur anzeigen, wenn feste_ip = true */}
+          {infrastructureData.internet.feste_ip && (
+            <div className="mt-3">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                IP-Adresse
+              </label>
+              <input
+                type="text"
+                value={infrastructureData.internet.ip_adresse || ""}
+                onChange={(e) =>
+                  setInfrastructureData({
+                    ...infrastructureData,
+                    internet: {
+                      ...infrastructureData.internet,
+                      ip_adresse: e.target.value,
+                    },
+                  })
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="z.B. 192.168.0.10"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* VPN erforderlich */}
+        <div className="flex items-center">
+          <input
+            type="checkbox"
+            id="vpn_erforderlich"
+            checked={infrastructureData.internet.vpn_erforderlich}
+            onChange={(e) =>
+              setInfrastructureData({
                 ...infrastructureData,
-                internet: {...infrastructureData.internet, vpn_erforderlich: e.target.checked}
-              })}
-              className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-            />
-            <label htmlFor="vpn_erforderlich" className="ml-2 text-sm text-gray-700">
-              VPN-Einwahl erforderlich
-            </label>
-          </div>
+                internet: {
+                  ...infrastructureData.internet,
+                  vpn_erforderlich: e.target.checked,
+                },
+              })
+            }
+            className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+          />
+          <label htmlFor="vpn_erforderlich" className="ml-2 text-sm text-gray-700">
+            VPN-Einwahl erforderlich
+          </label>
         </div>
       </div>
+    </div>
 
       {/* Benutzer */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -591,48 +632,19 @@ console.log('API_BASE =', API_BASE);
     <h3 className="text-lg font-medium text-gray-900">Hardware</h3>
   </div>
   
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+  <div className="grid grid-cols-1 gap-6">
+    {/* Hardware hinzufügen mit erweitertem Dropdown */}
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">RAID Level</label>
-      <input
-        type="text"
-        value={infrastructureData.hardware.raid_level}
-        onChange={(e) => setInfrastructureData({
-          ...infrastructureData,
-          hardware: {...infrastructureData.hardware, raid_level: e.target.value}
-        })}
-        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-        placeholder="z.B. RAID 1, RAID 5"
-      />
-    </div>
-
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">USV Modell</label>
-      <input
-        type="text"
-        value={infrastructureData.hardware.usv_modell}
-        onChange={(e) => setInfrastructureData({
-          ...infrastructureData,
-          hardware: {...infrastructureData.hardware, usv_modell: e.target.value}
-        })}
-        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-        placeholder="z.B. APC Smart-UPS 1500"
-      />
-    </div>
-
-    {/* NEU: Hardware hinzufügen mit Dropdown */}
-    <div className="md:col-span-2">
       <label className="block text-sm font-medium text-gray-700 mb-2">
         Hardware hinzufügen
       </label>
       
-      {/* Eingabezeile mit Dropdown und Button */}
+      {/* Eingabezeile mit Dropdown und manueller Eingabe */}
       <div className="flex gap-2 mb-3">
         <select
           value=""
           onChange={(e) => {
             if (e.target.value) {
-              // Füge die ausgewählte Hardware-Kategorie zur Liste hinzu
               const newHardware = [...(infrastructureData.hardware.verwendete_hardware || [])];
               // Prüfe ob schon vorhanden
               if (!newHardware.some(hw => hw.startsWith(e.target.value))) {
@@ -651,13 +663,20 @@ console.log('API_BASE =', API_BASE);
           className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="">Hardware-Typ auswählen...</option>
+          
           <optgroup label="Server & Storage">
             <option value="Server">Server</option>
             <option value="NAS">NAS (Network Attached Storage)</option>
             <option value="SAN">SAN (Storage Area Network)</option>
             <option value="Backup-Server">Backup-Server</option>
             <option value="Virtualisierungs-Host">Virtualisierungs-Host</option>
+            <option value="RAID 0">RAID 0 (Striping)</option>
+            <option value="RAID 1">RAID 1 (Mirroring)</option>
+            <option value="RAID 5">RAID 5 (Striping mit Parität)</option>
+            <option value="RAID 6">RAID 6 (Doppelte Parität)</option>
+            <option value="RAID 10">RAID 10 (1+0)</option>
           </optgroup>
+          
           <optgroup label="Netzwerk">
             <option value="Router">Router</option>
             <option value="Firewall">Firewall</option>
@@ -665,6 +684,7 @@ console.log('API_BASE =', API_BASE);
             <option value="Access Point">WLAN Access Point</option>
             <option value="Load Balancer">Load Balancer</option>
           </optgroup>
+          
           <optgroup label="Arbeitsplatz">
             <option value="Desktop-PC">Desktop-PC</option>
             <option value="Notebook">Notebook</option>
@@ -672,18 +692,36 @@ console.log('API_BASE =', API_BASE);
             <option value="Tablet">Tablet</option>
             <option value="Smartphone">Smartphone (Firmengerät)</option>
           </optgroup>
+          
           <optgroup label="Peripherie">
             <option value="Drucker">Drucker</option>
             <option value="Scanner">Scanner</option>
             <option value="Plotter">Plotter</option>
             <option value="Kopierer">Kopierer/Multifunktionsgerät</option>
           </optgroup>
-          <optgroup label="Infrastruktur">
-            <option value="USV">USV (Unterbrechungsfreie Stromversorgung)</option>
-            <option value="KVM-Switch">KVM-Switch</option>
+          
+          <optgroup label="Stromversorgung & USV">
+            <option value="USV APC Smart-UPS 750">APC Smart-UPS 750</option>
+            <option value="USV APC Smart-UPS 1000">APC Smart-UPS 1000</option>
+            <option value="USV APC Smart-UPS 1500">APC Smart-UPS 1500</option>
+            <option value="USV APC Smart-UPS 2200">APC Smart-UPS 2200</option>
+            <option value="USV APC Smart-UPS 3000">APC Smart-UPS 3000</option>
+            <option value="USV Eaton 5P">Eaton 5P Serie</option>
+            <option value="USV Eaton 9PX">Eaton 9PX Serie</option>
+            <option value="USV CyberPower">CyberPower USV</option>
             <option value="PDU">PDU (Power Distribution Unit)</option>
-            <option value="Klimaanlage">Klimaanlage Serverraum</option>
+            <option value="Redundante Netzteile">Server mit redundanten Netzteilen</option>
+            <option value="Hot-Swap Netzteile">Hot-Swap fähige Netzteile</option>
           </optgroup>
+          
+          <optgroup label="Infrastruktur">
+            <option value="KVM-Switch">KVM-Switch</option>
+            <option value="Klimaanlage">Klimaanlage Serverraum</option>
+            <option value="Rack 42HE">19" Rack 42HE</option>
+            <option value="Rack 24HE">19" Rack 24HE</option>
+            <option value="Wandschrank">Netzwerk-Wandschrank</option>
+          </optgroup>
+          
           <optgroup label="Spezial">
             <option value="Telefonanlage">Telefonanlage</option>
             <option value="Videokonferenz">Videokonferenz-System</option>
@@ -692,10 +730,10 @@ console.log('API_BASE =', API_BASE);
           </optgroup>
         </select>
 
-        {/* Oder manuell eingeben */}
+        {/* Manuelle Eingabe */}
         <input
           type="text"
-          placeholder="Oder manuell eingeben..."
+          placeholder="Oder spezifisches Modell eingeben..."
           onKeyDown={(e) => {
             if (e.key === 'Enter' && e.target.value.trim()) {
               e.preventDefault();
@@ -718,11 +756,11 @@ console.log('API_BASE =', API_BASE);
       {/* Liste der hinzugefügten Hardware */}
       {infrastructureData.hardware.verwendete_hardware?.length > 0 && (
         <div className="mt-3">
-          <p className="text-sm text-gray-600 mb-2">Hinzugefügte Hardware:</p>
-          <div className="space-y-2">
+          <p className="text-sm text-gray-600 mb-2">Erfasste Hardware:</p>
+          <div className="space-y-2 max-h-64 overflow-y-auto">
             {infrastructureData.hardware.verwendete_hardware.map((hw, index) => (
               <div key={index} className="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-md">
-                <div className="flex items-center">
+                <div className="flex items-center flex-1">
                   {/* Icon basierend auf Hardware-Typ */}
                   <span className="mr-2">
                     {hw.includes('Server') && '🖥️'}
@@ -734,34 +772,43 @@ console.log('API_BASE =', API_BASE);
                     {hw.includes('Desktop') && '🖥️'}
                     {hw.includes('Notebook') && '💻'}
                     {hw.includes('Drucker') && '🖨️'}
+                    {hw.includes('RAID') && '💿'}
                     {hw.includes('Telefon') && '☎️'}
+                    {hw.includes('Rack') && '🗄️'}
+                    {hw.includes('PDU') && '⚡'}
+                    {hw.includes('Klimaanlage') && '❄️'}
+                    {hw.includes('Netzteile') && '🔌'}
                     {!hw.includes('Server') && !hw.includes('Router') && !hw.includes('Firewall') && 
                      !hw.includes('Switch') && !hw.includes('USV') && !hw.includes('NAS') && 
                      !hw.includes('Desktop') && !hw.includes('Notebook') && !hw.includes('Drucker') && 
-                     !hw.includes('Telefon') && '📦'}
+                     !hw.includes('RAID') && !hw.includes('Telefon') && !hw.includes('Rack') &&
+                     !hw.includes('PDU') && !hw.includes('Klimaanlage') && !hw.includes('Netzteile') && '📦'}
                   </span>
-                  <span className="text-sm text-gray-700">{hw}</span>
+                  <span className="text-sm text-gray-700 flex-1">{hw}</span>
                 </div>
                 
-                {/* Optionale Details */}
+                {/* Details und Löschen */}
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
-                    placeholder="Details hinzufügen..."
+                    placeholder="Details/Notizen..."
                     onBlur={(e) => {
                       if (e.target.value.trim()) {
                         const updatedHardware = [...infrastructureData.hardware.verwendete_hardware];
-                        updatedHardware[index] = `${hw} - ${e.target.value.trim()}`;
-                        setInfrastructureData({
-                          ...infrastructureData,
-                          hardware: {
-                            ...infrastructureData.hardware,
-                            verwendete_hardware: updatedHardware
-                          }
-                        });
+                        // Nur anhängen wenn noch keine Details vorhanden
+                        if (!updatedHardware[index].includes(' - ')) {
+                          updatedHardware[index] = `${hw} - ${e.target.value.trim()}`;
+                          setInfrastructureData({
+                            ...infrastructureData,
+                            hardware: {
+                              ...infrastructureData.hardware,
+                              verwendete_hardware: updatedHardware
+                            }
+                          });
+                        }
                       }
                     }}
-                    className="px-2 py-1 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="px-2 py-1 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 w-48"
                   />
                   
                   <button
@@ -776,7 +823,8 @@ console.log('API_BASE =', API_BASE);
                         }
                       });
                     }}
-                    className="text-red-600 hover:text-red-800 text-sm"
+                    className="text-red-600 hover:text-red-800 text-sm px-2"
+                    title="Entfernen"
                   >
                     ✕
                   </button>
@@ -789,54 +837,9 @@ console.log('API_BASE =', API_BASE);
 
       {/* Hilfetext */}
       <p className="text-xs text-gray-500 mt-2">
-        Wählen Sie Hardware-Typen aus der Liste oder geben Sie spezifische Modelle manuell ein. 
-        Sie können Details zu jedem Eintrag hinzufügen.
+        Wählen Sie Hardware aus der Liste oder geben Sie spezifische Modelle manuell ein. 
+        RAID-Level und USV-Modelle finden Sie in den jeweiligen Kategorien.
       </p>
-    </div>
-
-    {/* Zusätzliche Hardware-Checkboxen */}
-    <div className="md:col-span-2">
-      <p className="text-sm font-medium text-gray-700 mb-3">Weitere Hardware-Eigenschaften</p>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <label className="flex items-center">
-          <input
-            type="checkbox"
-            checked={infrastructureData.hardware.server_netzteile === 'ja'}
-            onChange={(e) => setInfrastructureData({
-              ...infrastructureData,
-              hardware: {...infrastructureData.hardware, server_netzteile: e.target.checked ? 'ja' : 'nein'}
-            })}
-            className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-          />
-          <span className="ml-2 text-sm text-gray-700">Redundante Netzteile</span>
-        </label>
-
-        <label className="flex items-center">
-          <input
-            type="checkbox"
-            checked={infrastructureData.hardware.hot_spare_hdd === 'ja'}
-            onChange={(e) => setInfrastructureData({
-              ...infrastructureData,
-              hardware: {...infrastructureData.hardware, hot_spare_hdd: e.target.checked ? 'ja' : 'nein'}
-            })}
-            className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-          />
-          <span className="ml-2 text-sm text-gray-700">Hot-Spare HDD</span>
-        </label>
-
-        <label className="flex items-center">
-          <input
-            type="checkbox"
-            checked={infrastructureData.hardware.usv_vorhanden}
-            onChange={(e) => setInfrastructureData({
-              ...infrastructureData,
-              hardware: {...infrastructureData.hardware, usv_vorhanden: e.target.checked}
-            })}
-            className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-          />
-          <span className="ml-2 text-sm text-gray-700">USV vorhanden</span>
-        </label>
-      </div>
     </div>
   </div>
 </div>
@@ -881,45 +884,57 @@ console.log('API_BASE =', API_BASE);
       </div>
 
       {/* Software */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <div className="flex items-center mb-4">
-          <Settings className="w-5 h-5 text-indigo-600 mr-2" />
-          <h3 className="text-lg font-medium text-gray-900">Software</h3>
-        </div>
-        
-        <div className="grid grid-cols-1 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Virenschutz</label>
-            <input
-              type="text"
-              value={infrastructureData.software.virenschutz}
-              onChange={(e) => setInfrastructureData({
-                ...infrastructureData,
-                software: {...infrastructureData.software, virenschutz: e.target.value}
-              })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="z.B. Sophos, Kaspersky"
-            />
-          </div>
+<div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+  <div className="flex items-center mb-4">
+    <Settings className="w-5 h-5 text-indigo-600 mr-2" />
+    <h3 className="text-lg font-medium text-gray-900">Software</h3>
+  </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Verwendete Applikationen (eine pro Zeile)</label>
-            <textarea
-              value={infrastructureData.software.verwendete_applikationen.join('\n')}
-              onChange={(e) => setInfrastructureData({
-                ...infrastructureData,
-                software: {
-                  ...infrastructureData.software, 
-                  verwendete_applikationen: e.target.value.split('\n').map(s => s.trim()).filter(Boolean)
-                }
-              })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows="3"
-              placeholder="z.B.&#10;Microsoft Office&#10;Adobe Creative Suite&#10;Sage 50..."
-            />
-          </div>
-        </div>
-      </div>
+  <div className="grid grid-cols-1 gap-6">
+    {/* Virenschutz */}
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2">Virenschutz</label>
+      <input
+        type="text"
+        value={infrastructureData.software.virenschutz}
+        onChange={(e) =>
+          setInfrastructureData({
+            ...infrastructureData,
+            software: { ...infrastructureData.software, virenschutz: e.target.value },
+          })
+        }
+        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+        placeholder="z.B. Sophos, Kaspersky"
+      />
+    </div>
+
+    {/* Verwendete Applikationen */}
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2">
+        Verwendete Applikationen (eine pro Zeile oder mehrere pro Absatz)
+      </label>
+      <textarea
+        value={infrastructureData.software.verwendete_applikationen_text || ""}
+        onChange={(e) =>
+          setInfrastructureData({
+            ...infrastructureData,
+            software: {
+              ...infrastructureData.software,
+              verwendete_applikationen_text: e.target.value, // Rohtext speichern
+              verwendete_applikationen: e.target.value
+                .split(/\n+/) // Trennt an Zeilenumbrüchen
+                .map((s) => s.trim())
+                .filter(Boolean),
+            },
+          })
+        }
+        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+        rows="5"
+        placeholder={`z.B.\nMicrosoft Office\nAdobe Creative Suite\nSage 50...`}
+      />
+    </div>
+  </div>
+</div>
 
       {/* Backup */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -973,6 +988,39 @@ console.log('API_BASE =', API_BASE);
         </div>
       </div>
 
+    {/* Sonstiges */}
+<div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+  <div className="flex items-center mb-4">
+    <Settings className="w-5 h-5 text-yellow-600 mr-2" />
+    <h3 className="text-lg font-medium text-gray-900">Sonstiges</h3>
+  </div>
+
+  <div className="grid grid-cols-1 gap-6">
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2">
+        Sonstige Anmerkungen oder Informationen
+      </label>
+      <textarea
+        value={infrastructureData.sonstiges?.text || ""}
+        onChange={(e) =>
+          setInfrastructureData({
+            ...infrastructureData,
+            sonstiges: {
+              ...infrastructureData.sonstiges,
+              text: e.target.value,
+            },
+          })
+        }
+        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+        rows="4"
+        placeholder="Hier können zusätzliche Informationen oder Besonderheiten eingetragen werden..."
+      />
+    </div>
+  </div>
+</div>
+
+
+
       <div className="flex justify-between">
         <button
           onClick={() => setCurrentOnboardingStep(1)}
@@ -990,54 +1038,256 @@ console.log('API_BASE =', API_BASE);
     </div>
   );
 
-  const renderOnboardingStep3 = () => (
+  const renderOnboardingStep3 = () => {
+  const yesNo = (v) => (v ? 'Ja' : 'Nein');
+  const dash = (v) => (v !== undefined && v !== null && String(v).trim() !== '' ? String(v) : '—');
+
+  const { firmenname, email, strasse, hausnummer, plz, ort, telefonnummer, ansprechpartner } = onboardingCustomerData;
+  const { internet, users, hardware, mail, software, backup, sonstiges } = infrastructureData;
+
+  // Aus Software: sowohl Rohtext (mit Absätzen) als auch Liste anzeigen
+  const appsText = software?.verwendete_applikationen_text || '';
+  const appsList = Array.isArray(software?.verwendete_applikationen) ? software.verwendete_applikationen : [];
+
+  const verwendeteHardware = Array.isArray(hardware?.verwendete_hardware) ? hardware.verwendete_hardware : [];
+
+  return (
     <div className="space-y-6">
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         <h3 className="text-lg font-medium text-gray-900 mb-4">Zusammenfassung</h3>
-        
-        <div className="space-y-4">
-          <div>
-            <h4 className="font-medium text-gray-700">Kunde:</h4>
-            <p className="text-gray-600">{onboardingCustomerData.firmenname} - {onboardingCustomerData.email}</p>
+
+        {/* Kunde */}
+        <div className="space-y-2 mb-6">
+          <h4 className="font-semibold text-gray-800">Kunde</h4>
+          <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+            <div>
+              <dt className="text-sm text-gray-500">Firmenname</dt>
+              <dd className="text-sm text-gray-900">{dash(firmenname)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">E-Mail</dt>
+              <dd className="text-sm text-gray-900">{dash(email)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">Straße / Nr.</dt>
+              <dd className="text-sm text-gray-900">{dash(strasse)} {dash(hausnummer)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">PLZ / Ort</dt>
+              <dd className="text-sm text-gray-900">{dash(plz)} {dash(ort)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">Telefon</dt>
+              <dd className="text-sm text-gray-900">{dash(telefonnummer)}</dd>
+            </div>
+          </dl>
+
+          <h5 className="font-medium text-gray-700 mt-4">Ansprechpartner</h5>
+          <dl className="grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-2">
+            <div>
+              <dt className="text-sm text-gray-500">Vorname</dt>
+              <dd className="text-sm text-gray-900">{dash(ansprechpartner?.vorname)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">Nachname</dt>
+              <dd className="text-sm text-gray-900">{dash(ansprechpartner?.name)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">Position</dt>
+              <dd className="text-sm text-gray-900">{dash(ansprechpartner?.position)}</dd>
+            </div>
+          </dl>
+        </div>
+
+        {/* Internet & Firewall */}
+        <div className="space-y-2 mb-6">
+          <h4 className="font-semibold text-gray-800">Internet &amp; Firewall</h4>
+          <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+            <div>
+              <dt className="text-sm text-gray-500">Internetzugang</dt>
+              <dd className="text-sm text-gray-900">{dash(internet?.zugang)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">Firewall-Modell</dt>
+              <dd className="text-sm text-gray-900">{dash(internet?.firewall_modell)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">Feste IP</dt>
+              <dd className="text-sm text-gray-900">{yesNo(internet?.feste_ip)}</dd>
+            </div>
+            {internet?.feste_ip ? (
+              <div>
+                <dt className="text-sm text-gray-500">IP-Adresse</dt>
+                <dd className="text-sm text-gray-900">{dash(internet?.ip_adresse)}</dd>
+              </div>
+            ) : null}
+            <div>
+              <dt className="text-sm text-gray-500">VPN erforderlich</dt>
+              <dd className="text-sm text-gray-900">{yesNo(internet?.vpn_erforderlich)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">VPN-User (Anzahl)</dt>
+              <dd className="text-sm text-gray-900">{dash(internet?.vpn_user_anzahl)}</dd>
+            </div>
+          </dl>
+        </div>
+
+        {/* Benutzer */}
+        <div className="space-y-2 mb-6">
+          <h4 className="font-semibold text-gray-800">Benutzer</h4>
+          <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+            <div>
+              <dt className="text-sm text-gray-500">Anzahl User im Netz</dt>
+              <dd className="text-sm text-gray-900">{dash(users?.netz_user_anzahl)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">Anzahl Mail-User</dt>
+              <dd className="text-sm text-gray-900">{dash(users?.mail_user_anzahl)}</dd>
+            </div>
+          </dl>
+        </div>
+
+        {/* Hardware */}
+        <div className="space-y-2 mb-6">
+          <h4 className="font-semibold text-gray-800">Hardware</h4>
+          <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+            <div>
+              <dt className="text-sm text-gray-500">RAID-Level</dt>
+              <dd className="text-sm text-gray-900">{dash(hardware?.raid_level)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">USV vorhanden</dt>
+              <dd className="text-sm text-gray-900">{yesNo(hardware?.usv_vorhanden)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">USV-Modell</dt>
+              <dd className="text-sm text-gray-900">{dash(hardware?.usv_modell)}</dd>
+            </div>
+          </dl>
+
+          <div className="mt-2">
+            <dt className="text-sm text-gray-500 mb-1">Verwendete Hardware</dt>
+            {verwendeteHardware.length > 0 ? (
+              <ul className="list-disc list-inside text-sm text-gray-900 space-y-1">
+                {verwendeteHardware.map((h, i) => (
+                  <li key={i}>{h}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-gray-400">—</p>
+            )}
           </div>
-          
-          <div>
-            <h4 className="font-medium text-gray-700">Benutzer:</h4>
-            <p className="text-gray-600">
-              {infrastructureData.users.netz_user_anzahl} Netzwerk-User, {infrastructureData.users.mail_user_anzahl} Mail-User
-            </p>
-          </div>
-          
-          <div>
-            <h4 className="font-medium text-gray-700">Internet:</h4>
-            <p className="text-gray-600">{infrastructureData.internet.zugang || 'Nicht angegeben'}</p>
+        </div>
+
+        {/* Mail */}
+        <div className="space-y-2 mb-6">
+          <h4 className="font-semibold text-gray-800">Mail</h4>
+          <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+            <div>
+              <dt className="text-sm text-gray-500">Mail-Speicherort</dt>
+              <dd className="text-sm text-gray-900">{dash(mail?.mail_speicherort)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">Mail-Server Volumen</dt>
+              <dd className="text-sm text-gray-900">{dash(mail?.mail_server_volumen)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">POP3-Connector</dt>
+              <dd className="text-sm text-gray-900">{yesNo(mail?.pop3_connector)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">Sonstige Mailadressen</dt>
+              <dd className="text-sm text-gray-900">{dash(mail?.sonstige_mailadressen)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">Mobiler Zugriff</dt>
+              <dd className="text-sm text-gray-900">{yesNo(mail?.mobiler_zugriff)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">Zertifikat erforderlich</dt>
+              <dd className="text-sm text-gray-900">{yesNo(mail?.zertifikat_erforderlich)}</dd>
+            </div>
+          </dl>
+        </div>
+
+        {/* Software */}
+        <div className="space-y-2 mb-6">
+          <h4 className="font-semibold text-gray-800">Software</h4>
+          <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+            <div>
+              <dt className="text-sm text-gray-500">Virenschutz</dt>
+              <dd className="text-sm text-gray-900">{dash(software?.virenschutz)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">Schnittstellen</dt>
+              <dd className="text-sm text-gray-900">{dash(software?.schnittstellen)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">Wartungsvertrag</dt>
+              <dd className="text-sm text-gray-900">{yesNo(software?.wartungsvertrag)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">Migration Support</dt>
+              <dd className="text-sm text-gray-900">{yesNo(software?.migration_support)}</dd>
+            </div>
+          </dl>
+
+          {/* Rohtext mit Absätzen */}
+          <div className="mt-2">
+            <dt className="text-sm text-gray-500 mb-1">Verwendete Applikationen (Text)</dt>
+            <dd className="text-sm text-gray-900 whitespace-pre-line">
+              {appsText.trim() ? appsText : '—'}
+            </dd>
           </div>
 
-          <div>
-            <h4 className="font-medium text-gray-700">Software:</h4>
-            <p className="text-gray-600">
-              {infrastructureData.software.verwendete_applikationen.length > 0 
-                ? infrastructureData.software.verwendete_applikationen.slice(0, 3).join(', ') + 
-                  (infrastructureData.software.verwendete_applikationen.length > 3 ? '...' : '')
-                : 'Keine angegeben'}
-            </p>
+          {/* Liste */}
+          <div className="mt-2">
+            <dt className="text-sm text-gray-500 mb-1">Verwendete Applikationen (Liste)</dt>
+            {appsList.length > 0 ? (
+              <ul className="list-disc list-inside text-sm text-gray-900 space-y-1">
+                {appsList.map((app, i) => (
+                  <li key={i}>{app}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-gray-400">—</p>
+            )}
           </div>
+        </div>
 
-          {/* NEU: Hardware-Zusammenfassung */}
-          <div>
-            <h4 className="font-medium text-gray-700">Hardware:</h4>
-            <p className="text-gray-600">
-              {infrastructureData.hardware.verwendete_hardware?.length > 0
-                ? infrastructureData.hardware.verwendete_hardware.slice(0, 3).join(', ') +
-                  (infrastructureData.hardware.verwendete_hardware.length > 3 ? '...' : '')
-                : 'Keine angegeben'}
-            </p>
-          </div>
+        {/* Backup */}
+        <div className="space-y-2 mb-6">
+          <h4 className="font-semibold text-gray-800">Backup</h4>
+          <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+            <div>
+              <dt className="text-sm text-gray-500">Strategie</dt>
+              <dd className="text-sm text-gray-900">{dash(backup?.strategie)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">NAS vorhanden</dt>
+              <dd className="text-sm text-gray-900">{yesNo(backup?.nas_vorhanden)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">Externe HDDs</dt>
+              <dd className="text-sm text-gray-900">{dash(backup?.externe_hdds)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">Doku vorhanden</dt>
+              <dd className="text-sm text-gray-900">{yesNo(backup?.dokumentation_vorhanden)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">Admin-Passwörter bekannt</dt>
+              <dd className="text-sm text-gray-900">{yesNo(backup?.admin_passwoerter_bekannt)}</dd>
+            </div>
+          </dl>
+        </div>
 
-          <div>
-            <h4 className="font-medium text-gray-700">Backup:</h4>
-            <p className="text-gray-600">{infrastructureData.backup.strategie || 'Nicht definiert'}</p>
-          </div>
+        {/* Sonstiges */}
+        <div className="space-y-2">
+          <h4 className="font-semibold text-gray-800">Sonstiges</h4>
+          <p className="text-sm text-gray-900 whitespace-pre-line">
+            {dash(sonstiges?.text)}
+          </p>
         </div>
 
         <div className="flex justify-between mt-6">
@@ -1052,12 +1302,14 @@ console.log('API_BASE =', API_BASE);
             disabled={loading}
             className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors"
           >
-            {loading ? 'Speichern...' : '✅ Kunde und IT-Infrastruktur speichern'}
+            {loading ? 'Speichern...' : 'Kunde und IT-Infrastruktur speichern'}
           </button>
         </div>
       </div>
     </div>
   );
+};
+
 
   // ---- Content Switch ----
   const renderContent = () => {
@@ -1104,139 +1356,232 @@ console.log('API_BASE =', API_BASE);
           </div>
         );
 
-      case 'stundenkalkulation':
-        return (
-          <div className="max-w-4xl">
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h3 className="text-lg font-medium text-gray-900">Stundenkalkulation erstellen</h3>
-                <p className="text-sm text-gray-500 mt-1">Neue Kalkulation mit Dienstleistungen</p>
-              </div>
+      
+ case 'stundenkalkulation': {
+  // Hilfsrechner pro Zeile
+  const rowHours = (d) => (Number(d.dauer_pro_einheit) || 0) * (Number(d.anzahl) || 1);
+  const rowRate = (d) => Number(d.stundensatz ?? calculationForm.stundensatz) || 0;
+  const rowTotal = (d) => rowHours(d) * rowRate(d);
 
-              <form onSubmit={handleCalculationSubmit} className="p-6 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Kunde auswählen *</label>
-                    <select
-                      required
-                      value={calculationForm.kunde_id}
-                      onChange={(e) => setCalculationForm({ ...calculationForm, kunde_id: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">Kunde wählen...</option>
-                      {customers.map((kunde) => (
-                        <option key={kunde.kunden_id} value={kunde.kunden_id}>
-                          {kunde.firmenname}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+  // Gesamtsummen
+  const sumNetto = calculationForm.dienstleistungen.reduce((acc, d) => acc + rowTotal(d), 0);
+  const sumMwst = sumNetto * (Number(mwst) / 100);
+  const sumBrutto = sumNetto + sumMwst;
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Stundensatz (€) *</label>
-                    <input
-                      type="number"
-                      required
-                      step="0.01"
-                      value={calculationForm.stundensatz}
-                      onChange={(e) =>
-                        setCalculationForm({ ...calculationForm, stundensatz: Number(e.target.value) })
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="85.00"
-                    />
-                  </div>
-                </div>
+  // Zeile unter aktueller Zeile hinzufügen
+  const addRowBelow = (index) => {
+    setCalculationForm((prev) => {
+      const copy = [...prev.dienstleistungen];
+      copy.splice(index + 1, 0, { beschreibung: '', dauer_pro_einheit: 0, anzahl: 1, info: '', stundensatz: undefined });
+      return { ...prev, dienstleistungen: copy };
+    });
+  };
 
-                {/* Dienstleistungen */}
-                <div className="border-t pt-6">
-                  <div className="flex justify-between items-center mb-4">
-                    <h4 className="text-md font-medium text-gray-900">Dienstleistungen</h4>
-                    <button
-                      type="button"
-                      onClick={addDienstleistung}
-                      className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm"
-                    >
-                      + Dienstleistung hinzufügen
-                    </button>
-                  </div>
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <form onSubmit={handleCalculationSubmit} className="space-y-6">
+        {/* Kopf: Kunde + Standard-Stundensatz + MwSt */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Kunde auswählen *</label>
+            <select
+              required
+              value={calculationForm.kunde_id}
+              onChange={(e) => setCalculationForm({ ...calculationForm, kunde_id: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Kunde wählen...</option>
+              {customers.map((k) => (
+                <option key={k.kunden_id} value={k.kunden_id}>{k.firmenname}</option>
+              ))}
+            </select>
+          </div>
 
-                  {calculationForm.dienstleistungen.map((dienst, index) => (
-                    <div key={index} className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4 p-4 bg-gray-50 rounded-md">
-                      <div className="md:col-span-2">
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Beschreibung *</label>
-                        <input
-                          type="text"
-                          required
-                          value={dienst.beschreibung}
-                          onChange={(e) => updateDienstleistung(index, 'beschreibung', e.target.value)}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                          placeholder="z.B. Server-Setup"
-                        />
-                      </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Standard-Stundensatz (€) *</label>
+            <input
+              type="number"
+              required
+              step="0.01"
+              value={calculationForm.stundensatz}
+              onChange={(e) => setCalculationForm({ ...calculationForm, stundensatz: Number(e.target.value) })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="85.00"
+            />
+            <p className="text-xs text-gray-500 mt-1">Gilt für Zeilen ohne eigenen Satz.</p>
+          </div>
 
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Stunden pro Einheit *</label>
-                        <input
-                          type="number"
-                          required
-                          step="0.5"
-                          value={dienst.dauer_pro_einheit}
-                          onChange={(e) => updateDienstleistung(index, 'dauer_pro_einheit', Number(e.target.value))}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                          placeholder="2.0"
-                        />
-                      </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">MwSt (%)</label>
+            <input
+              type="number"
+              step="0.1"
+              value={mwst}
+              onChange={(e) => setMwst(Number(e.target.value))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
 
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Anzahl</label>
+        {/* Tabelle */}
+        <div className="border-t pt-6">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-md font-medium text-gray-900">Dienstleistungen</h4>
+            <button
+              type="button"
+              onClick={addDienstleistung}
+              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm"
+            >
+              + Position hinzufügen
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-2 text-left font-medium text-gray-600">Beschreibung</th>
+                  <th className="px-4 py-2 text-right font-medium text-gray-600">Anzahl</th>
+                  <th className="px-4 py-2 text-right font-medium text-gray-600">Std/Einheit</th>
+                  <th className="px-4 py-2 text-right font-medium text-gray-600">Stundensatz (€)</th>
+                  <th className="px-4 py-2 text-right font-medium text-gray-600">Stunden gesamt</th>
+                  <th className="px-4 py-2 text-right font-medium text-gray-600">Betrag (€)</th>
+                  <th className="px-4 py-2 text-left font-medium text-gray-600">Notiz</th>
+                  <th className="px-2 py-2"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {calculationForm.dienstleistungen.map((d, i) => {
+                  const hours = rowHours(d);
+                  const rate = rowRate(d);
+                  const total = hours * rate;
+                  return (
+                    <tr key={i} className="bg-white hover:bg-gray-50">
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            required
+                            value={d.beschreibung}
+                            onChange={(e) => updateDienstleistung(i, 'beschreibung', e.target.value)}
+                            className="w-full px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            placeholder="z.B. Server-Setup"
+                          />
+                          {/* + neben Beschreibung: neue Zeile darunter */}
+                          <button
+                            type="button"
+                            onClick={() => addRowBelow(i)}
+                            className="px-2 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 text-xs"
+                            title="Zeile darunter einfügen"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 text-right">
                         <input
                           type="number"
                           min="1"
-                          value={dienst.anzahl}
-                          onChange={(e) => updateDienstleistung(index, 'anzahl', Number(e.target.value))}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          value={d.anzahl}
+                          onChange={(e) => updateDienstleistung(i, 'anzahl', Number(e.target.value))}
+                          className="w-24 text-right px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
-                      </div>
-
-                      <div className="flex items-end">
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        <input
+                          type="number"
+                          step="0.25"
+                          value={d.dauer_pro_einheit}
+                          onChange={(e) => updateDienstleistung(i, 'dauer_pro_einheit', Number(e.target.value))}
+                          className="w-28 text-right px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={d.stundensatz ?? ''}
+                          onChange={(e) => {
+                            const v = e.target.value === '' ? undefined : Number(e.target.value);
+                            updateDienstleistung(i, 'stundensatz', v);
+                          }}
+                          className="w-28 text-right px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          placeholder={String(calculationForm.stundensatz)}
+                        />
+                        <p className="text-[10px] text-gray-400 mt-0.5">
+                          leer = {Number(calculationForm.stundensatz).toFixed(2)} €
+                        </p>
+                      </td>
+                      <td className="px-4 py-2 text-right tabular-nums">{hours.toFixed(2)}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">
+                        {(total).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
+                      </td>
+                      <td className="px-4 py-2">
+                        <input
+                          type="text"
+                          value={d.info || ''}
+                          onChange={(e) => updateDienstleistung(i, 'info', e.target.value)}
+                          className="w-full px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          placeholder="z.B. Remote, vor Ort, Pauschale …"
+                        />
+                      </td>
+                      <td className="px-2 py-2">
                         {calculationForm.dienstleistungen.length > 1 && (
                           <button
                             type="button"
-                            onClick={() => removeDienstleistung(index)}
-                            className="px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm"
+                            onClick={() => removeDienstleistung(i)}
+                            className="px-2 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 text-xs"
+                            title="Zeile entfernen"
                           >
-                            Entfernen
+                            ×
                           </button>
                         )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-                {Number(calculationForm.stundensatz) > 0 &&
-                  calculationForm.dienstleistungen.some((d) => Number(d.dauer_pro_einheit) > 0) && (
-                    <div className="bg-blue-50 p-4 rounded-md border border-blue-200">
-                      <div className="text-center">
-                        <p className="text-sm text-blue-600 mb-2">Geschätzte Gesamtkosten</p>
-                        <p className="text-3xl font-bold text-blue-900">{euro(calculateTotal())}</p>
-                      </div>
-                    </div>
-                  )}
-
-                <div className="flex justify-end">
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-                  >
-                    {loading ? 'Speichern...' : 'Kalkulation speichern'}
-                  </button>
-                </div>
-              </form>
+        {/* Summenbox */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="md:col-start-3 bg-gray-50 border border-gray-200 rounded-md p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-700">Summe Netto</span>
+              <span className="font-medium">
+                {sumNetto.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
+              </span>
+            </div>
+            <div className="flex items-center justify-between mt-2">
+              <span className="text-sm text-gray-700">MwSt ({mwst}%)</span>
+              <span className="font-medium">
+                {sumMwst.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
+              </span>
+            </div>
+            <div className="flex items-center justify-between mt-2 border-t pt-2">
+              <span className="text-sm font-semibold text-gray-900">Summe Brutto</span>
+              <span className="text-lg font-bold">
+                {sumBrutto.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
+              </span>
             </div>
           </div>
-        );
+        </div>
+
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={loading}
+            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+          >
+            {loading ? 'Speichern...' : 'Kalkulation speichern'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
 
       default:
         return (
@@ -1256,7 +1601,7 @@ console.log('API_BASE =', API_BASE);
                     </div>
                   </div>
                   <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Aktive Kunden</p>
+                    <p className="text-sm font-medium text-gray-600">Kunden</p>
                     <p className="text-2xl font-semibold text-gray-900">{stats.activeCustomers}</p>
                   </div>
                 </div>
@@ -1270,7 +1615,7 @@ console.log('API_BASE =', API_BASE);
                     </div>
                   </div>
                   <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Laufende Projekte</p>
+                    <p className="text-sm font-medium text-gray-600">Projekte</p>
                     <p className="text-2xl font-semibold text-gray-900">{stats.runningProjects}</p>
                   </div>
                 </div>
@@ -1449,9 +1794,7 @@ console.log('API_BASE =', API_BASE);
             >
               <RotateCcw className="w-5 h-5" />
             </button>
-            <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md">
-              <Bell className="w-5 h-5" />
-            </button>
+
 
             {/* Profile Button */}
             <div className="relative">
