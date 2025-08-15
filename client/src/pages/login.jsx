@@ -1,28 +1,24 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';   // ✅ hinzufügen
 import './login.css';
 
-const Login = () => {
-  const navigate = useNavigate();
+const Login = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('');
   const [passwort, setPasswort] = useState('');
   const [error, setError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     try {
-      const res = await fetch('http://localhost:5000/api/auth/login', {
+      const res = await fetch('/api/auth/login', {         // optional: relativ, wenn Proxy
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, passwort }),
       });
-
       const data = await res.json();
 
       if (res.ok) {
-        // ✅ React Router Navigation
-        navigate('/dashboard');
+        onLoginSuccess?.(data.user);                       // ✅ falls Prop fehlt, kein Crash
       } else {
         setError(data.error || 'Unbekannter Fehler beim Login');
       }

@@ -1,24 +1,21 @@
-// src/components/dashboard.jsx
+// src/pages/dashboard.jsx
 import React, { useState, useEffect } from 'react';
 import {
-  User,
-  Clock,
-  Settings,
-  RotateCcw,
-  Calculator,
-  TrendingUp,
-  Network,
-  ChevronRight,
+  User, Clock, Settings, RotateCcw, Calculator, TrendingUp, Network, ChevronRight,
+  Sun, Moon
 } from 'lucide-react';
-
 import OnboardingSection from '../features/onboarding/OnboardingSection.jsx';
 import CalculationSection from '../features/kalkulation/calculationSection.jsx';
+import useDarkMode from '../hooks/useDarkMode';
 
-export default function Dashboard() {
+export default function Dashboard({ onLogout }) {
   const [activeSection, setActiveSection] = useState('overview');
   const [showProfile, setShowProfile] = useState(false);
   const [loading, setLoading] = useState(false);
   const [currentOnboardingStep, setCurrentOnboardingStep] = useState(1);
+  
+  // Verwendung des useDarkMode Hooks
+  const { isDark, toggle } = useDarkMode();
 
   const API_BASE =
     (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE) ||
@@ -43,13 +40,11 @@ export default function Dashboard() {
   });
   const [customers, setCustomers] = useState([]);
   const [kalkulationen, setKalkulationen] = useState([]);
-
   const [calculationForm, setCalculationForm] = useState({
     kunde_id: '',
     stundensatz: 85,
     dienstleistungen: [{ beschreibung: '', dauer_pro_einheit: 0, anzahl: 1, info: '' }],
   });
-
   const [mwst, setMwst] = useState(19);
 
   // Onboarding-States
@@ -111,7 +106,6 @@ export default function Dashboard() {
     },
   });
 
-  // Laden
   useEffect(() => {
     loadDashboardData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -153,7 +147,6 @@ export default function Dashboard() {
     }
   };
 
-  // Submit: Onboarding (API bleibt hier!)
   const handleFinalOnboardingSubmit = async () => {
     setLoading(true);
     try {
@@ -175,7 +168,6 @@ export default function Dashboard() {
 
       alert('✅ Kunde und IT-Infrastruktur erfolgreich erfasst!');
       setCurrentOnboardingStep(1);
-      // reset
       setOnboardingCustomerData({
         firmenname: '',
         strasse: '',
@@ -203,7 +195,6 @@ export default function Dashboard() {
     }
   };
 
-  // Submit: Kalkulation (API bleibt hier!)
   const handleCalculationSubmit = async (e) => {
     e.preventDefault();
 
@@ -292,124 +283,81 @@ export default function Dashboard() {
         return (
           <div className="space-y-6">
             <div>
-              <h2 className="text-2xl font-semibold text-gray-900 mb-2">Dashboard Übersicht</h2>
-              <p className="text-gray-600">Aktuelle Statistiken und laufende Projekte</p>
+              <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Dashboard Übersicht</h2>
+              <p className="text-gray-600 dark:text-gray-400">Aktuelle Statistiken und laufende Projekte</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center">
-                      <User className="w-4 h-4 text-white" />
+              {[
+                { icon: User, bg: 'bg-blue-500', label: 'Kunden', value: stats.activeCustomers },
+                { icon: Calculator, bg: 'bg-green-500', label: 'Projekte', value: stats.runningProjects },
+                { icon: Clock, bg: 'bg-orange-500', label: 'Stunden (Monat)', value: Math.round(stats.monthlyHours) + 'h' },
+                { icon: TrendingUp, bg: 'bg-purple-500', label: 'Umsatz (Monat)', value: euro(stats.monthlyRevenue) },
+              ].map((item, index) => (
+                <div key={index} className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <div className={`w-8 h-8 ${item.bg} rounded-md flex items-center justify-center`}>
+                        <item.icon className="w-4 h-4 text-white" />
+                      </div>
+                    </div>
+                    <div className="ml-4">
+                      <p className="text-sm font-medium text-gray-600 dark:text-gray-300">{item.label}</p>
+                      <p className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{item.value}</p>
                     </div>
                   </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Kunden</p>
-                    <p className="text-2xl font-semibold text-gray-900">{stats.activeCustomers}</p>
-                  </div>
                 </div>
-              </div>
-
-              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
-                      <Calculator className="w-4 h-4 text-white" />
-                    </div>
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Projekte</p>
-                    <p className="text-2xl font-semibold text-gray-900">{stats.runningProjects}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-orange-500 rounded-md flex items-center justify-center">
-                      <Clock className="w-4 h-4 text-white" />
-                    </div>
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Stunden (Monat)</p>
-                    <p className="text-2xl font-semibold text-gray-900">{Math.round(stats.monthlyHours)}h</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-purple-500 rounded-md flex items-center justify-center">
-                      <TrendingUp className="w-4 h-4 text-white" />
-                    </div>
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Umsatz (Monat)</p>
-                    <p className="text-2xl font-semibold text-gray-900">{euro(stats.monthlyRevenue)}</p>
-                  </div>
-                </div>
-              </div>
+              ))}
             </div>
 
-            {/* Aktuelle Kalkulationen */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h3 className="text-lg font-medium text-gray-900">Aktuelle Kalkulationen</h3>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">Aktuelle Kalkulationen</h3>
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
+                  <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Kunde
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Datum
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Stunden
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Gesamtpreis
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
-                      </th>
+                      {['Kunde', 'Datum', 'Stunden', 'Gesamtpreis', 'Status'].map((header) => (
+                        <th
+                          key={header}
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                        >
+                          {header}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                     {kalkulationen.slice(0, 5).map((kalkulation) => (
-                      <tr key={kalkulation.kalkulations_id} className="hover:bg-gray-50">
+                      <tr key={kalkulation.kalkulations_id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm font-medium text-gray-900">
+                          <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
                             {kalkulation.kunde_name || kalkulation.firmenname || '—'}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm text-gray-900">
+                          <span className="text-sm text-gray-900 dark:text-gray-300">
                             {kalkulation.datum
                               ? new Date(kalkulation.datum).toLocaleDateString('de-DE')
                               : '—'}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm text-gray-900">{Number(kalkulation.gesamtzeit || 0)}h</span>
+                          <span className="text-sm text-gray-900 dark:text-gray-300">{Number(kalkulation.gesamtzeit || 0)}h</span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm text-gray-900">{euro(kalkulation.gesamtpreis)}</span>
+                          <span className="text-sm text-gray-900 dark:text-gray-300">{euro(kalkulation.gesamtpreis)}</span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span
                             className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
                               kalkulation.status === 'erledigt'
-                                ? 'bg-green-100 text-green-800'
+                                ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
                                 : kalkulation.status === 'in Arbeit'
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-blue-100 text-blue-800'
+                                ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                                : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
                             }`}
                           >
                             {kalkulation.status || 'neu'}
@@ -427,22 +375,24 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="h-screen bg-gray-50 flex">
-      {/* Loading Overlay */}
+    <div className="h-screen flex bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
       {loading && (
-        <div className="fixed inset-0 bg-black/10 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white px-4 py-2 rounded shadow">Lade Daten…</div>
+        <div className="fixed inset-0 bg-black/10 dark:bg-black/30 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-4 py-2 rounded shadow">
+            Lade Daten…
+          </div>
         </div>
       )}
 
-      {/* Sidebar */}
-      <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
-        <div className="p-4 border-b border-gray-200">
-          <h1 className="text-xl font-bold text-gray-800">Pauly Dashboard</h1>
+      <div className="w-64 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 flex flex-col">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+          <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Pauly Dashboard</h1>
         </div>
 
         <nav className="flex-1 p-4 space-y-2">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">BEREICHE</div>
+          <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+            BEREICHE
+          </div>
 
           {menuItems.map((item) => {
             const IconComponent = item.icon;
@@ -452,69 +402,96 @@ export default function Dashboard() {
                 key={item.id}
                 onClick={() => setActiveSection(item.id)}
                 className={`w-full flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                  isActive ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-600' : 'text-gray-700 hover:bg-gray-100'
+                  isActive
+                    ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-600 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-400'
+                    : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
                 }`}
               >
-                <IconComponent className={`w-4 h-4 ${isActive ? 'text-blue-600' : 'text-gray-500'}`} />
+                <IconComponent
+                  className={`w-4 h-4 ${
+                    isActive ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'
+                  }`}
+                />
                 <span className="flex-1 text-left">{item.label}</span>
-                {isActive && <ChevronRight className="w-4 h-4 text-blue-600" />}
+                {isActive && <ChevronRight className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
               </button>
             );
           })}
         </nav>
 
-        <div className="p-4 border-t border-gray-200">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">TOOLS</div>
-          <button className="w-full flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100">
-            <Settings className="w-4 h-4 text-gray-500" />
+        <div className="p-4 border-t border-gray-200 dark:border-gray-800">
+          <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+            TOOLS
+          </div>
+          <button className="w-full flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800">
+            <Settings className="w-4 h-4 text-gray-500 dark:text-gray-400" />
             <span>Einstellungen</span>
           </button>
         </div>
       </div>
 
-      {/* Main */}
       <div className="flex-1 flex flex-col">
-        <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <h2 className="text-2xl font-semibold text-gray-900">
+        <header className="bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 px-6 py-3 grid grid-cols-[1fr_auto_1fr] items-center">
+          <div className="justify-self-start">
+            <h2 className="sr-only">
               {menuItems.find((item) => item.id === activeSection)?.label || 'Dashboard'}
             </h2>
           </div>
 
-          <div className="flex items-center space-x-3">
+          <button
+            type="button"
+            onClick={() => setActiveSection('overview')}
+            className="justify-self-center"
+            aria-label="Zur Übersicht"
+          >
+            <img src="/pauly_logo4.png" alt="Pauly Logo" className="h-16 w-auto" />
+          </button>
+
+          <div className="flex items-center space-x-3 justify-self-end">
             <button
               onClick={loadDashboardData}
-              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md"
+              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-800 rounded-md"
               title="Daten aktualisieren"
             >
               <RotateCcw className="w-5 h-5" />
             </button>
 
-            <div className="relative">
+            <div className="relative flex items-center">
               <button
                 onClick={() => setShowProfile(!showProfile)}
-                className="flex items-center space-x-2 p-2 text-gray-700 hover:bg-gray-100 rounded-md"
+                className="flex items-center space-x-2 p-2 text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800 rounded-md"
               >
-                <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                  <User className="w-4 h-4 text-white" />
+                <div className="w-8 h-8 bg-yellow-400 rounded-full flex items-center justify-center">
+                  <User className="w-4 h-4 text-gray-900" />
                 </div>
               </button>
 
+              <button
+                onClick={toggle}
+                className="ml-1 p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300"
+                title={isDark ? 'Hellmodus' : 'Dunkelmodus'}
+              >
+                {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              </button>
+
               {showProfile && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-10">
-                  <div className="p-3 border-b border-gray-100">
-                    <p className="text-sm font-medium text-gray-900">Mitarbeiter</p>
-                    <p className="text-xs text-gray-500">pauly@example.com</p>
+                <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-900 rounded-md shadow-lg border border-gray-200 dark:border-gray-700 z-10">
+                  <div className="p-3 border-b border-gray-100 dark:border-gray-800">
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Mitarbeiter</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">pauly@example.com</p>
                   </div>
                   <div className="py-1">
-                    <button className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                    <button className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800">
                       Profil anzeigen
                     </button>
-                    <button className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                    <button className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800">
                       Einstellungen
                     </button>
-                    <hr className="my-1 border-gray-100" />
-                    <button className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                    <hr className="my-1 border-gray-100 dark:border-gray-800" />
+                    <button 
+                      onClick={onLogout}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+                    >
                       Abmelden
                     </button>
                   </div>
@@ -524,7 +501,9 @@ export default function Dashboard() {
           </div>
         </header>
 
-        <main className="flex-1 p-6 overflow-auto">{renderContent()}</main>
+        <main className="flex-1 p-6 overflow-auto bg-gray-50 dark:bg-gray-900">
+          {renderContent()}
+        </main>
       </div>
     </div>
   );
