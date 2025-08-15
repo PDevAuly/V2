@@ -1,25 +1,23 @@
-import React, { useState } from 'react';
-import Login from './components/login';
-import Register from './components/register';
-import Dashboard from './components/dashboard';
+// src/App.js
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
-import './components/login.css';
-import './components/register.css';
+import Login from './pages/login';
+import Register from './pages/register';
+import Dashboard from './pages/dashboard';
 
-function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [showRegister, setShowRegister] = useState(false);
+import './pages/login.css';
+import './pages/register.css';
 
-  const handleSwitch = () => setShowRegister((prev) => !prev);
-  const handleLoginSuccess = () => setIsLoggedIn(true);
-
-  if (isLoggedIn) return <Dashboard />;
-
-  return showRegister ? (
-    <Register onSwitch={handleSwitch} />
-  ) : (
-    <Login onSwitch={handleSwitch} onLoginSuccess={handleLoginSuccess} />
+export default function App() {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+      </Routes>
+    </Router>
   );
 }
-
-export default App;

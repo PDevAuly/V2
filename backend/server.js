@@ -65,12 +65,48 @@ app.get('/api/test', (req, res) => {
   });
 });
 
+const KNOWN = {
+  internet: ['zugang','feste_ip','ip_adresse','firewall_modell','firewall_alter','vpn_erforderlich','vpn_user_anzahl'],
+  users: ['netz_user_anzahl','mail_user_anzahl'],
+  hardware: ['verwendete_hardware'],
+  mail: ['file_server_volumen','mail_server_volumen','mail_speicherort','pop3_connector','sonstige_mailadressen','besondere_anforderungen','mobiler_zugriff','zertifikat_erforderlich'],
+  software: ['ansprechpartner','wartungsvertrag','migration_support','virenschutz','schnittstellen','verwendete_applikationen'],
+  backup: ['strategie','nas_vorhanden','externe_hdds','dokumentation_vorhanden','admin_passwoerter_bekannt'],
+  sonstiges: ['text']
+};
+
+function pickKnown(sectionObj = {}, allowedKeys = []) {
+  const out = {};
+  for (const k of allowedKeys) if (sectionObj[k] !== undefined) out[k] = sectionObj[k];
+  return out;
+}
+function stripKnown(sectionObj = {}, allowedKeys = []) {
+  const out = {};
+  for (const [k, v] of Object.entries(sectionObj)) if (!allowedKeys.includes(k)) out[k] = v;
+  return Object.keys(out).length ? out : undefined;
+}
+function splitInfrastructureData(infra = {}) {
+  const sections = {};
+  const extras = {};
+  for (const section of Object.keys(infra)) {
+    const allowed = KNOWN[section] || [];
+    const knownPart = pickKnown(infra[section], allowed);
+    const extraPart = stripKnown(infra[section], allowed);
+    if (Object.keys(knownPart).length) sections[section] = knownPart;
+    if (extraPart) extras[section] = extraPart;
+  }
+  for (const k of Object.keys(infra)) if (!KNOWN[k]) extras[k] = infra[k];
+  return { sections, extras: Object.keys(extras).length ? extras : null };
+}
+
+
+
 /* ===================== Auth ===================== */
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, passwort } = req.body;
     const result = await pool.query(
-      'SELECT mitarbeiter_id, name, vorname, email, rolle FROM mitarbeiter WHERE email = $1',
+      'SELECT mitarbeiter_id, name, vorname, email, rolle, passwort FROM mitarbeiter WHERE email = $1',
       [email]
     );
 
@@ -78,9 +114,14 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Benutzer nicht gefunden' });
     }
 
-    // TODO: bcrypt.compare(passwort, hash)
     const user = result.rows[0];
-    console.log('🔑 Login:', email);
+    
+    // PASSWORT-VALIDIERUNG HINZUGEFÜGT:
+    if (user.passwort !== passwort) {
+      return res.status(401).json({ error: 'Falsches Passwort' });
+    }
+
+    console.log('🔑 Login erfolgreich:', email);
 
     res.json({
       message: 'Login erfolgreich',
@@ -355,47 +396,203 @@ app.post('/api/kalkulationen', async (req, res) => {
  */
 // ===================== Onboarding (direkt in onboarding.infrastructure_data) =====================
 app.post('/api/onboarding', async (req, res) => {
+  const client = await pool.connect();
+  const warnings = [];
   try {
     const { kunde_id, infrastructure_data, mitarbeiter_id } = req.body;
     if (!kunde_id || !infrastructure_data) {
       return res.status(400).json({ error: 'kunde_id und infrastructure_data sind erforderlich' });
     }
 
-    await pool.query('BEGIN');
+    // Nur die Sektionen nutzen, die wir kennen; Rest als extras zurücklegen
+    const KNOWN = {
+      hardware: ['verwendete_hardware'],
+      mail: ['file_server_volumen','mail_server_volumen','mail_speicherort','pop3_connector','sonstige_mailadressen','besondere_anforderungen','mobiler_zugriff','zertifikat_erforderlich'],
+      software: ['ansprechpartner','wartungsvertrag','migration_support','virenschutz','schnittstellen','verwendete_applikationen'],
+      backup: ['strategie','nas_vorhanden','externe_hdds','dokumentation_vorhanden','admin_passwoerter_bekannt'],
+    };
+    const sections = {};
+    const extras = {};
+    for (const [k, v] of Object.entries(infrastructure_data || {})) {
+      const allow = KNOWN[k] || [];
+      if (allow.length) {
+        const known = {};
+        const rest = {};
+        for (const [kk, vv] of Object.entries(v || {})) {
+          (allow.includes(kk) ? known : rest)[kk] = vv;
+        }
+        if (Object.keys(known).length) sections[k] = known;
+        if (Object.keys(rest).length)  extras[k]   = rest;
+      } else {
+        extras[k] = v;
+      }
+    }
+
+    const mail     = sections.mail || {};
+    const software = sections.software || {};
+    const backup   = sections.backup || {};
+    const hardwareList = Array.isArray(sections.hardware?.verwendete_hardware)
+      ? sections.hardware.verwendete_hardware
+      : [];
+
+    await client.query('BEGIN');
+
+    // 1) Onboarding: zuerst MIT JSONB versuchen, bei Fehler OHNE JSONB fallen lassen
+    let onboardingId;
+    await client.query('SAVEPOINT sp_onboarding');
     try {
-      const ins = await pool.query(
+      const { rows } = await client.query(
         `INSERT INTO onboarding (datum, status, mitarbeiter_id, kunde_id, infrastructure_data)
          VALUES (CURRENT_DATE, 'neu', $1, $2, $3::jsonb)
          RETURNING onboarding_id`,
         [mitarbeiter_id || 1, kunde_id, JSON.stringify(infrastructure_data)]
       );
-
-      await pool.query('COMMIT');
-      res.status(201).json({ message: 'Onboarding gespeichert', onboarding_id: ins.rows[0].onboarding_id });
+      onboardingId = rows[0].onboarding_id;
     } catch (e) {
-      await pool.query('ROLLBACK');
-      throw e;
+      // Fallback: ohne infrastructure_data (falls Spalte fehlt)
+      warnings.push(`ONBOARDING ohne JSONB gespeichert (Grund: ${e.message})`);
+      await client.query('ROLLBACK TO SAVEPOINT sp_onboarding');
+      const { rows } = await client.query(
+        `INSERT INTO onboarding (datum, status, mitarbeiter_id, kunde_id)
+         VALUES (CURRENT_DATE, 'neu', $1, $2)
+         RETURNING onboarding_id`,
+        [mitarbeiter_id || 1, kunde_id]
+      );
+      onboardingId = rows[0].onboarding_id;
     }
-  } catch (err) {
-    console.error('Onboarding Error:', err);
-    res.status(500).json({ error: 'Fehler beim Speichern des Onboardings: ' + err.message });
-  }
-});
 
-// Optional: Einzelnes Onboarding abrufen (inkl. JSON)
-app.get('/api/onboarding/:id', async (req, res) => {
-  try {
-    const { rows } = await pool.query(
-      `SELECT onboarding_id, datum, status, mitarbeiter_id, kunde_id, infrastructure_data
-       FROM onboarding
-       WHERE onboarding_id = $1`,
-      [req.params.id]
-    );
-    if (!rows.length) return res.status(404).json({ error: 'Nicht gefunden' });
-    res.json(rows[0]);
+    // 2) MAIL
+    await client.query('SAVEPOINT sp_mail');
+    try {
+      if (Object.keys(mail).length) {
+        await client.query(
+          `INSERT INTO mail (
+             onboarding_id, file_server_volumen, mail_server_volumen, mail_speicherort,
+             pop3_connector, sonstige_mailadressen, besondere_anforderungen,
+             mobiler_zugriff, zertifikat_erforderlich
+           )
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [
+            onboardingId,
+            mail.file_server_volumen ?? null,
+            mail.mail_server_volumen ?? null,
+            mail.mail_speicherort ?? null,
+            !!mail.pop3_connector,
+            mail.sonstige_mailadressen ?? null,
+            mail.besondere_anforderungen ?? null,
+            !!mail.mobiler_zugriff,
+            !!mail.zertifikat_erforderlich
+          ]
+        );
+      }
+    } catch (e) {
+      warnings.push(`MAIL übersprungen: ${e.message}`);
+      await client.query('ROLLBACK TO SAVEPOINT sp_mail');
+    }
+
+    // 3) SOFTWARE
+    await client.query('SAVEPOINT sp_software');
+    try {
+      if (Object.keys(software).length) {
+        await client.query(
+          `INSERT INTO software (
+             onboarding_id, ansprechpartner, wartungsvertrag, migration_support,
+             virenschutz, schnittstellen
+           )
+           VALUES ($1,$2,$3,$4,$5,$6)`,
+          [
+            onboardingId,
+            software.ansprechpartner ?? null,
+            !!software.wartungsvertrag,
+            !!software.migration_support,
+            software.virenschutz ?? null,
+            software.schnittstellen ?? null
+          ]
+        );
+        // Falls du eine software_app-Tabelle hast, hier ergänzen.
+      }
+    } catch (e) {
+      warnings.push(`SOFTWARE übersprungen: ${e.message}`);
+      await client.query('ROLLBACK TO SAVEPOINT sp_software');
+    }
+
+    // 4) BACKUP
+    await client.query('SAVEPOINT sp_backup');
+    try {
+      if (Object.keys(backup).length) {
+        await client.query(
+          `INSERT INTO backup (
+             onboarding_id, strategie, nas_vorhanden, externe_hdds,
+             dokumentation_vorhanden, admin_passwoerter_bekannt
+           )
+           VALUES ($1,$2,$3,$4,$5,$6)`,
+          [
+            onboardingId,
+            backup.strategie ?? null,
+            !!backup.nas_vorhanden,
+            backup.externe_hdds ?? null,
+            !!backup.dokumentation_vorhanden,
+            !!backup.admin_passwoerter_bekannt
+          ]
+        );
+      }
+    } catch (e) {
+      warnings.push(`BACKUP übersprungen: ${e.message}`);
+      await client.query('ROLLBACK TO SAVEPOINT sp_backup');
+    }
+
+    // 5) HARDWARE
+    await client.query('SAVEPOINT sp_hardware');
+    try {
+      for (const item of hardwareList) {
+        let bezeichnung = String(item || '');
+        let details = null;
+        if (bezeichnung.includes(' - ')) {
+          const [b, d] = bezeichnung.split(' - ');
+          bezeichnung = (b || '').trim();
+          details = (d || '').trim();
+        }
+        if (!bezeichnung) continue;
+        await client.query(
+          `INSERT INTO hardware (onboarding_id, bezeichnung, details)
+           VALUES ($1,$2,$3)`,
+          [onboardingId, bezeichnung, details]
+        );
+      }
+    } catch (e) {
+      warnings.push(`HARDWARE teilweise/komplett übersprungen: ${e.message}`);
+      await client.query('ROLLBACK TO SAVEPOINT sp_hardware');
+    }
+
+    // 6) OPTIONAL: Onboarding-Details (falls Tabelle existiert)
+    await client.query('SAVEPOINT sp_details');
+    try {
+      await client.query(
+        `INSERT INTO onboarding_details (onboarding_id, raw, extras)
+         VALUES ($1, $2::jsonb, $3::jsonb)`,
+        [
+          onboardingId,
+          JSON.stringify(infrastructure_data),
+          Object.keys(extras).length ? JSON.stringify(extras) : null
+        ]
+      );
+    } catch (e) {
+      warnings.push(`DETAILS ausgelassen: ${e.message}`);
+      await client.query('ROLLBACK TO SAVEPOINT sp_details');
+    }
+
+    await client.query('COMMIT');
+    res.status(201).json({
+      message: 'Onboarding gespeichert (Tabellen + ggf. JSONB)',
+      onboarding_id: onboardingId,
+      warnings: warnings.length ? warnings : undefined
+    });
   } catch (err) {
-    console.error('Get Onboarding Error:', err);
-    res.status(500).json({ error: 'Fehler beim Abrufen' });
+    await client.query('ROLLBACK');
+    console.error('Onboarding Fatal Error:', err);
+    res.status(500).json({ error: 'Fehler beim Speichern des Onboardings: ' + err.message });
+  } finally {
+    client.release();
   }
 });
 
