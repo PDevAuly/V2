@@ -423,13 +423,6 @@ export default function Dashboard({ onLogout }) {
         </nav>
 
         <div className="p-4 border-t border-gray-200 dark:border-gray-800">
-          <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
-            TOOLS
-          </div>
-          <button className="w-full flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800">
-            <Settings className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-            <span>Einstellungen</span>
-          </button>
         </div>
       </div>
 
