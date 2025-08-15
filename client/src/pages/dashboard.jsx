@@ -1,8 +1,7 @@
-// src/pages/dashboard.jsx
 import React, { useState, useEffect } from 'react';
 import {
   User, Clock, Settings, RotateCcw, Calculator, TrendingUp, Network, ChevronRight,
-  Sun, Moon
+  Sun, Moon, Building, Shield, Server, Mail, HardDrive, CheckCircle
 } from 'lucide-react';
 import OnboardingSection from '../features/onboarding/OnboardingSection.jsx';
 import CalculationSection from '../features/kalkulation/calculationSection.jsx';
@@ -13,13 +12,11 @@ export default function Dashboard({ onLogout }) {
   const [showProfile, setShowProfile] = useState(false);
   const [loading, setLoading] = useState(false);
   const [currentOnboardingStep, setCurrentOnboardingStep] = useState(1);
-  
-  // Verwendung des useDarkMode Hooks
   const { isDark, toggle } = useDarkMode();
 
-  const API_BASE =
+  const API_BASE = 
     (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE) ||
-    (typeof process !== 'undefined' &&
+    (typeof process !== 'undefined' && 
       (process.env?.REACT_APP_API_BASE || process.env?.REACT_APP_API_URL)) ||
     'http://localhost:5000/api';
 
@@ -245,38 +242,44 @@ export default function Dashboard({ onLogout }) {
   };
 
   const menuItems = [
-    { id: 'overview', label: 'Übersicht', icon: TrendingUp, color: 'text-blue-600' },
-    { id: 'onboarding', label: 'Kunden-Onboarding', icon: Network, color: 'text-purple-600' },
-    { id: 'stundenkalkulation', label: 'Stundenkalkulation', icon: Calculator, color: 'text-orange-600' },
+    { id: 'overview', label: 'Übersicht', icon: TrendingUp, color: 'text-blue-600 dark:text-blue-400' },
+    { id: 'onboarding', label: 'Kunden-Onboarding', icon: Network, color: 'text-purple-600 dark:text-purple-400' },
+    { id: 'stundenkalkulation', label: 'Stundenkalkulation', icon: Calculator, color: 'text-orange-600 dark:text-orange-400' },
   ];
 
   const renderContent = () => {
     switch (activeSection) {
       case 'onboarding':
         return (
-          <OnboardingSection
-            currentOnboardingStep={currentOnboardingStep}
-            setCurrentOnboardingStep={setCurrentOnboardingStep}
-            onboardingCustomerData={onboardingCustomerData}
-            setOnboardingCustomerData={setOnboardingCustomerData}
-            infrastructureData={infrastructureData}
-            setInfrastructureData={setInfrastructureData}
-            loading={loading}
-            onFinalSubmit={handleFinalOnboardingSubmit}
-          />
+          <div className={isDark ? 'dark' : ''}>
+            <OnboardingSection
+              isDark={isDark}
+              currentOnboardingStep={currentOnboardingStep}
+              setCurrentOnboardingStep={setCurrentOnboardingStep}
+              onboardingCustomerData={onboardingCustomerData}
+              setOnboardingCustomerData={setOnboardingCustomerData}
+              infrastructureData={infrastructureData}
+              setInfrastructureData={setInfrastructureData}
+              loading={loading}
+              onFinalSubmit={handleFinalOnboardingSubmit}
+            />
+          </div>
         );
 
       case 'stundenkalkulation':
         return (
-          <CalculationSection
-            customers={customers}
-            calculationForm={calculationForm}
-            setCalculationForm={setCalculationForm}
-            mwst={mwst}
-            setMwst={setMwst}
-            loading={loading}
-            onSubmit={handleCalculationSubmit}
-          />
+          <div className={isDark ? 'dark' : ''}>
+            <CalculationSection
+              isDark={isDark}
+              customers={customers}
+              calculationForm={calculationForm}
+              setCalculationForm={setCalculationForm}
+              mwst={mwst}
+              setMwst={setMwst}
+              loading={loading}
+              onSubmit={handleCalculationSubmit}
+            />
+          </div>
         );
 
       default:
@@ -375,7 +378,7 @@ export default function Dashboard({ onLogout }) {
   };
 
   return (
-    <div className="h-screen flex bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+    <div className={`h-screen flex bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 ${isDark ? 'dark' : ''}`}>
       {loading && (
         <div className="fixed inset-0 bg-black/10 dark:bg-black/30 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-4 py-2 rounded shadow">

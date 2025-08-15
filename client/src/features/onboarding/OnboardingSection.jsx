@@ -20,13 +20,25 @@ export default function OnboardingSection({
   infrastructureData,
   setInfrastructureData,
   loading,
-  onFinalSubmit, // kommt aus Dashboard -> handleFinalOnboardingSubmit
+  onFinalSubmit,
+  isDark, // Dark Mode Status als Prop
 }) {
   const onboardingSteps = [
     { id: 1, title: 'Kundendaten', icon: Building, description: 'Firmendaten und Kontakt' },
     { id: 2, title: 'IT-Infrastruktur', icon: Network, description: 'Technische Dokumentation' },
     { id: 3, title: 'Bestätigung', icon: CheckCircle, description: 'Daten prüfen und speichern' },
   ];
+
+  // Dark Mode Klassen
+  const bgClass = isDark ? 'bg-gray-800' : 'bg-white';
+  const borderClass = isDark ? 'border-gray-700' : 'border-gray-200';
+  const textClass = isDark ? 'text-gray-100' : 'text-gray-900';
+  const textSecondaryClass = isDark ? 'text-gray-300' : 'text-gray-700';
+  const textMutedClass = isDark ? 'text-gray-400' : 'text-gray-500';
+  const inputClass = isDark 
+    ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500'
+    : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:ring-blue-500 focus:border-blue-500';
+  const bgHoverClass = isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-50';
 
   const handleOnboardingCustomerSubmit = () => {
     if (!onboardingCustomerData.firmenname || !onboardingCustomerData.email) {
@@ -44,166 +56,62 @@ export default function OnboardingSection({
   // ---- STEP 1: Kundendaten ---------------------------------------------------
   const Step1 = () => (
     <div className="space-y-6">
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Firmendaten</h3>
+      <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
+        <h3 className={`text-lg font-medium ${textClass} mb-4`}>Firmendaten</h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Firmenname *</label>
-            <input
-              type="text"
-              required
-              value={onboardingCustomerData.firmenname}
-              onChange={(e) =>
-                setOnboardingCustomerData({ ...onboardingCustomerData, firmenname: e.target.value })
-              }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Firmenname"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">E-Mail *</label>
-            <input
-              type="email"
-              required
-              value={onboardingCustomerData.email}
-              onChange={(e) =>
-                setOnboardingCustomerData({ ...onboardingCustomerData, email: e.target.value })
-              }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="firma@example.com"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Straße *</label>
-            <input
-              type="text"
-              value={onboardingCustomerData.strasse}
-              onChange={(e) =>
-                setOnboardingCustomerData({ ...onboardingCustomerData, strasse: e.target.value })
-              }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Musterstraße"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Hausnummer *</label>
-            <input
-              type="text"
-              value={onboardingCustomerData.hausnummer}
-              onChange={(e) =>
-                setOnboardingCustomerData({ ...onboardingCustomerData, hausnummer: e.target.value })
-              }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="123a"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">PLZ *</label>
-            <input
-              type="text"
-              value={onboardingCustomerData.plz}
-              onChange={(e) =>
-                setOnboardingCustomerData({ ...onboardingCustomerData, plz: e.target.value })
-              }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="12345"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Ort *</label>
-            <input
-              type="text"
-              value={onboardingCustomerData.ort}
-              onChange={(e) =>
-                setOnboardingCustomerData({ ...onboardingCustomerData, ort: e.target.value })
-              }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Musterstadt"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Telefon *</label>
-            <input
-              type="tel"
-              value={onboardingCustomerData.telefonnummer}
-              onChange={(e) =>
-                setOnboardingCustomerData({
-                  ...onboardingCustomerData,
-                  telefonnummer: e.target.value,
-                })
-              }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="+49 123 456789"
-            />
-          </div>
+          {[
+            { label: 'Firmenname *', key: 'firmenname', type: 'text', placeholder: 'Firmenname', required: true },
+            { label: 'E-Mail *', key: 'email', type: 'email', placeholder: 'firma@example.com', required: true },
+            { label: 'Straße *', key: 'strasse', type: 'text', placeholder: 'Musterstraße' },
+            { label: 'Hausnummer *', key: 'hausnummer', type: 'text', placeholder: '123a' },
+            { label: 'PLZ *', key: 'plz', type: 'text', placeholder: '12345' },
+            { label: 'Ort *', key: 'ort', type: 'text', placeholder: 'Musterstadt' },
+            { label: 'Telefon *', key: 'telefonnummer', type: 'tel', placeholder: '+49 123 456789' },
+          ].map((field) => (
+            <div key={field.key}>
+              <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>{field.label}</label>
+              <input
+                type={field.type}
+                required={field.required}
+                value={onboardingCustomerData[field.key]}
+                onChange={(e) =>
+                  setOnboardingCustomerData({ ...onboardingCustomerData, [field.key]: e.target.value })
+                }
+                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+                placeholder={field.placeholder}
+              />
+            </div>
+          ))}
         </div>
 
-        <div className="border-t pt-6 mt-6">
-          <h4 className="text-md font-medium text-gray-900 mb-4">Ansprechpartner</h4>
+        <div className={`border-t ${borderClass} pt-6 mt-6`}>
+          <h4 className={`text-md font-medium ${textClass} mb-4`}>Ansprechpartner</h4>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Vorname</label>
-              <input
-                type="text"
-                value={onboardingCustomerData.ansprechpartner.vorname}
-                onChange={(e) =>
-                  setOnboardingCustomerData({
-                    ...onboardingCustomerData,
-                    ansprechpartner: {
-                      ...onboardingCustomerData.ansprechpartner,
-                      vorname: e.target.value,
-                    },
-                  })
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Max"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Nachname</label>
-              <input
-                type="text"
-                value={onboardingCustomerData.ansprechpartner.name}
-                onChange={(e) =>
-                  setOnboardingCustomerData({
-                    ...onboardingCustomerData,
-                    ansprechpartner: {
-                      ...onboardingCustomerData.ansprechpartner,
-                      name: e.target.value,
-                    },
-                  })
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Mustermann"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Position</label>
-              <input
-                type="text"
-                value={onboardingCustomerData.ansprechpartner.position}
-                onChange={(e) =>
-                  setOnboardingCustomerData({
-                    ...onboardingCustomerData,
-                    ansprechpartner: {
-                      ...onboardingCustomerData.ansprechpartner,
-                      position: e.target.value,
-                    },
-                  })
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="IT-Leiter"
-              />
-            </div>
+            {[
+              { label: 'Vorname', key: 'vorname', placeholder: 'Max' },
+              { label: 'Nachname', key: 'name', placeholder: 'Mustermann' },
+              { label: 'Position', key: 'position', placeholder: 'IT-Leiter' },
+            ].map((field) => (
+              <div key={field.key}>
+                <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>{field.label}</label>
+                <input
+                  type="text"
+                  value={onboardingCustomerData.ansprechpartner[field.key]}
+                  onChange={(e) =>
+                    setOnboardingCustomerData({
+                      ...onboardingCustomerData,
+                      ansprechpartner: {
+                        ...onboardingCustomerData.ansprechpartner,
+                        [field.key]: e.target.value,
+                      },
+                    })
+                  }
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+                  placeholder={field.placeholder}
+                />
+              </div>
+            ))}
           </div>
         </div>
 
@@ -223,44 +131,33 @@ export default function OnboardingSection({
   const Step2 = () => (
     <div className="space-y-6">
       {/* Internet & Firewall */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
         <div className="flex items-center mb-4">
-          <Shield className="w-5 h-5 text-blue-600 mr-2" />
-          <h3 className="text-lg font-medium text-gray-900">Internet & Firewall</h3>
+          <Shield className="w-5 h-5 text-blue-500 mr-2" />
+          <h3 className={`text-lg font-medium ${textClass}`}>Internet & Firewall</h3>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Internetzugang</label>
-            <input
-              type="text"
-              value={infrastructureData.internet.zugang}
-              onChange={(e) =>
-                setInfrastructureData({
-                  ...infrastructureData,
-                  internet: { ...infrastructureData.internet, zugang: e.target.value },
-                })
-              }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="z.B. DSL 100/40 Mbit, Glasfaser..."
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Firewall Modell</label>
-            <input
-              type="text"
-              value={infrastructureData.internet.firewall_modell}
-              onChange={(e) =>
-                setInfrastructureData({
-                  ...infrastructureData,
-                  internet: { ...infrastructureData.internet, firewall_modell: e.target.value },
-                })
-              }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="z.B. Sophos XG 125"
-            />
-          </div>
+          {[
+            { label: 'Internetzugang', key: 'zugang', placeholder: 'z.B. DSL 100/40 Mbit, Glasfaser...' },
+            { label: 'Firewall Modell', key: 'firewall_modell', placeholder: 'z.B. Sophos XG 125' },
+          ].map((field) => (
+            <div key={field.key}>
+              <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>{field.label}</label>
+              <input
+                type="text"
+                value={infrastructureData.internet[field.key]}
+                onChange={(e) =>
+                  setInfrastructureData({
+                    ...infrastructureData,
+                    internet: { ...infrastructureData.internet, [field.key]: e.target.value },
+                  })
+                }
+                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+                placeholder={field.placeholder}
+              />
+            </div>
+          ))}
 
           {/* Feste IP + optionales IP-Feld */}
           <div className="col-span-2">
@@ -279,16 +176,16 @@ export default function OnboardingSection({
                     },
                   })
                 }
-                className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                className={`h-4 w-4 text-blue-600 rounded focus:ring-blue-500 ${isDark ? 'border-gray-500' : 'border-gray-300'}`}
               />
-              <label htmlFor="feste_ip" className="ml-2 text-sm text-gray-700">
+              <label htmlFor="feste_ip" className={`ml-2 text-sm ${textSecondaryClass}`}>
                 Feste IP-Adresse vorhanden
               </label>
             </div>
 
             {infrastructureData.internet.feste_ip && (
               <div className="mt-3">
-                <label className="block text-sm font-medium text-gray-700 mb-1">IP-Adresse</label>
+                <label className={`block text-sm font-medium ${textSecondaryClass} mb-1`}>IP-Adresse</label>
                 <input
                   type="text"
                   value={infrastructureData.internet.ip_adresse || ''}
@@ -301,7 +198,7 @@ export default function OnboardingSection({
                       },
                     })
                   }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
                   placeholder="z.B. 192.168.0.10"
                 />
               </div>
@@ -322,9 +219,9 @@ export default function OnboardingSection({
                   },
                 })
               }
-              className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              className={`h-4 w-4 text-blue-600 rounded focus:ring-blue-500 ${isDark ? 'border-gray-500' : 'border-gray-300'}`}
             />
-            <label htmlFor="vpn_erforderlich" className="ml-2 text-sm text-gray-700">
+            <label htmlFor="vpn_erforderlich" className={`ml-2 text-sm ${textSecondaryClass}`}>
               VPN-Einwahl erforderlich
             </label>
           </div>
@@ -332,63 +229,49 @@ export default function OnboardingSection({
       </div>
 
       {/* Benutzer */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
         <div className="flex items-center mb-4">
-          <User className="w-5 h-5 text-green-600 mr-2" />
-          <h3 className="text-lg font-medium text-gray-900">Benutzer</h3>
+          <User className="w-5 h-5 text-green-500 mr-2" />
+          <h3 className={`text-lg font-medium ${textClass}`}>Benutzer</h3>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Anzahl User im Netz</label>
-            <input
-              type="number"
-              value={infrastructureData.users.netz_user_anzahl}
-              onChange={(e) =>
-                setInfrastructureData({
-                  ...infrastructureData,
-                  users: {
-                    ...infrastructureData.users,
-                    netz_user_anzahl: parseInt(e.target.value) || 0,
-                  },
-                })
-              }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              min="0"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Anzahl Mail-User</label>
-            <input
-              type="number"
-              value={infrastructureData.users.mail_user_anzahl}
-              onChange={(e) =>
-                setInfrastructureData({
-                  ...infrastructureData,
-                  users: {
-                    ...infrastructureData.users,
-                    mail_user_anzahl: parseInt(e.target.value) || 0,
-                  },
-                })
-              }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              min="0"
-            />
-          </div>
+          {[
+            { label: 'Anzahl User im Netz', key: 'netz_user_anzahl', type: 'number' },
+            { label: 'Anzahl Mail-User', key: 'mail_user_anzahl', type: 'number' },
+          ].map((field) => (
+            <div key={field.key}>
+              <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>{field.label}</label>
+              <input
+                type={field.type}
+                value={infrastructureData.users[field.key]}
+                onChange={(e) =>
+                  setInfrastructureData({
+                    ...infrastructureData,
+                    users: {
+                      ...infrastructureData.users,
+                      [field.key]: parseInt(e.target.value) || 0,
+                    },
+                  })
+                }
+                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+                min="0"
+              />
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Hardware (Kurzfassung inkl. Liste + manuelle Eingabe) */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      {/* Hardware */}
+      <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
         <div className="flex items-center mb-4">
-          <Server className="w-5 h-5 text-purple-600 mr-2" />
-          <h3 className="text-lg font-medium text-gray-900">Hardware</h3>
+          <Server className="w-5 h-5 text-purple-500 mr-2" />
+          <h3 className={`text-lg font-medium ${textClass}`}>Hardware</h3>
         </div>
 
         <div className="grid grid-cols-1 gap-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Hardware hinzufügen</label>
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Hardware hinzufügen</label>
 
             <div className="flex gap-2 mb-3">
               <select
@@ -405,7 +288,7 @@ export default function OnboardingSection({
                   }
                   e.target.value = '';
                 }}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
               >
                 <option value="">Hardware-Typ auswählen...</option>
                 <optgroup label="Server & Storage">
@@ -455,20 +338,20 @@ export default function OnboardingSection({
                   });
                   e.target.value = '';
                 }}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
               />
             </div>
 
             {infrastructureData.hardware.verwendete_hardware?.length > 0 && (
               <div className="mt-3">
-                <p className="text-sm text-gray-600 mb-2">Erfasste Hardware:</p>
+                <p className={`text-sm ${textMutedClass} mb-2`}>Erfasste Hardware:</p>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {infrastructureData.hardware.verwendete_hardware.map((hw, index) => (
                     <div
                       key={`${hw}-${index}`}
-                      className="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-md"
+                      className={`flex items-center justify-between ${isDark ? 'bg-gray-700' : 'bg-gray-50'} px-3 py-2 rounded-md`}
                     >
-                      <span className="text-sm text-gray-700">{hw}</span>
+                      <span className={`text-sm ${textClass}`}>{hw}</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -480,7 +363,7 @@ export default function OnboardingSection({
                             hardware: { ...infrastructureData.hardware, verwendete_hardware: updated },
                           });
                         }}
-                        className="text-red-600 hover:text-red-800 text-sm px-2"
+                        className="text-red-500 hover:text-red-700 text-sm px-2"
                         title="Entfernen"
                       >
                         ✕
@@ -495,57 +378,46 @@ export default function OnboardingSection({
       </div>
 
       {/* Mail */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
         <div className="flex items-center mb-4">
-          <Mail className="w-5 h-5 text-orange-600 mr-2" />
-          <h3 className="text-lg font-medium text-gray-900">Mail Server</h3>
+          <Mail className="w-5 h-5 text-orange-500 mr-2" />
+          <h3 className={`text-lg font-medium ${textClass}`}>Mail Server</h3>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Mail Speicherort</label>
-            <input
-              type="text"
-              value={infrastructureData.mail.mail_speicherort}
-              onChange={(e) =>
-                setInfrastructureData({
-                  ...infrastructureData,
-                  mail: { ...infrastructureData.mail, mail_speicherort: e.target.value },
-                })
-              }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="z.B. Exchange, Office 365"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Mail Server Volumen</label>
-            <input
-              type="text"
-              value={infrastructureData.mail.mail_server_volumen}
-              onChange={(e) =>
-                setInfrastructureData({
-                  ...infrastructureData,
-                  mail: { ...infrastructureData.mail, mail_server_volumen: e.target.value },
-                })
-              }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="z.B. 100 GB"
-            />
-          </div>
+          {[
+            { label: 'Mail Speicherort', key: 'mail_speicherort', placeholder: 'z.B. Exchange, Office 365' },
+            { label: 'Mail Server Volumen', key: 'mail_server_volumen', placeholder: 'z.B. 100 GB' },
+          ].map((field) => (
+            <div key={field.key}>
+              <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>{field.label}</label>
+              <input
+                type="text"
+                value={infrastructureData.mail[field.key]}
+                onChange={(e) =>
+                  setInfrastructureData({
+                    ...infrastructureData,
+                    mail: { ...infrastructureData.mail, [field.key]: e.target.value },
+                  })
+                }
+                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+                placeholder={field.placeholder}
+              />
+            </div>
+          ))}
         </div>
       </div>
 
       {/* Software */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
         <div className="flex items-center mb-4">
-          <Settings className="w-5 h-5 text-indigo-600 mr-2" />
-          <h3 className="text-lg font-medium text-gray-900">Software</h3>
+          <Settings className="w-5 h-5 text-indigo-500 mr-2" />
+          <h3 className={`text-lg font-medium ${textClass}`}>Software</h3>
         </div>
 
         <div className="grid grid-cols-1 gap-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Virenschutz</label>
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Virenschutz</label>
             <input
               type="text"
               value={infrastructureData.software.virenschutz}
@@ -555,13 +427,13 @@ export default function OnboardingSection({
                   software: { ...infrastructureData.software, virenschutz: e.target.value },
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
               placeholder="z.B. Sophos, Kaspersky"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
               Verwendete Applikationen (eine pro Zeile)
             </label>
             <textarea
@@ -579,7 +451,7 @@ export default function OnboardingSection({
                   },
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
               rows="5"
               placeholder={`z.B.\nMicrosoft Office\nAdobe Creative Cloud\nSage 50`}
             />
@@ -588,15 +460,15 @@ export default function OnboardingSection({
       </div>
 
       {/* Backup */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
         <div className="flex items-center mb-4">
-          <HardDrive className="w-5 h-5 text-red-600 mr-2" />
-          <h3 className="text-lg font-medium text-gray-900">Backup</h3>
+          <HardDrive className="w-5 h-5 text-red-500 mr-2" />
+          <h3 className={`text-lg font-medium ${textClass}`}>Backup</h3>
         </div>
 
         <div className="grid grid-cols-1 gap-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Backup-Strategie</label>
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Backup-Strategie</label>
             <textarea
               value={infrastructureData.backup.strategie}
               onChange={(e) =>
@@ -605,7 +477,7 @@ export default function OnboardingSection({
                   backup: { ...infrastructureData.backup, strategie: e.target.value },
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
               rows="2"
               placeholder="z.B. Tägliches Backup auf NAS, wöchentlich Offsite…"
             />
@@ -622,9 +494,9 @@ export default function OnboardingSection({
                     backup: { ...infrastructureData.backup, nas_vorhanden: e.target.checked },
                   })
                 }
-                className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                className={`h-4 w-4 text-blue-600 rounded focus:ring-blue-500 ${isDark ? 'border-gray-500' : 'border-gray-300'}`}
               />
-              <span className="ml-2 text-sm text-gray-700">NAS vorhanden</span>
+              <span className={`ml-2 text-sm ${textSecondaryClass}`}>NAS vorhanden</span>
             </label>
 
             <label className="flex items-center">
@@ -640,24 +512,24 @@ export default function OnboardingSection({
                     },
                   })
                 }
-                className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                className={`h-4 w-4 text-blue-600 rounded focus:ring-blue-500 ${isDark ? 'border-gray-500' : 'border-gray-300'}`}
               />
-              <span className="ml-2 text-sm text-gray-700">Dokumentation vorhanden</span>
+              <span className={`ml-2 text-sm ${textSecondaryClass}`}>Dokumentation vorhanden</span>
             </label>
           </div>
         </div>
       </div>
 
       {/* Sonstiges */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
         <div className="flex items-center mb-4">
-          <Settings className="w-5 h-5 text-yellow-600 mr-2" />
-          <h3 className="text-lg font-medium text-gray-900">Sonstiges</h3>
+          <Settings className="w-5 h-5 text-yellow-500 mr-2" />
+          <h3 className={`text-lg font-medium ${textClass}`}>Sonstiges</h3>
         </div>
 
         <div className="grid grid-cols-1 gap-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
               Sonstige Anmerkungen oder Informationen
             </label>
             <textarea
@@ -668,7 +540,7 @@ export default function OnboardingSection({
                   sonstiges: { ...(infrastructureData.sonstiges || {}), text: e.target.value },
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
               rows="4"
               placeholder="Besonderheiten, Hinweise, TODOs…"
             />
@@ -709,239 +581,187 @@ export default function OnboardingSection({
 
     return (
       <div className="space-y-6">
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">Zusammenfassung</h3>
+        <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
+          <h3 className={`text-lg font-medium ${textClass} mb-4`}>Zusammenfassung</h3>
 
           {/* Kunde */}
           <div className="space-y-2 mb-6">
-            <h4 className="font-semibold text-gray-800">Kunde</h4>
+            <h4 className={`font-semibold ${textClass}`}>Kunde</h4>
             <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
-              <div>
-                <dt className="text-sm text-gray-500">Firmenname</dt>
-                <dd className="text-sm text-gray-900">{dash(firmenname)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">E-Mail</dt>
-                <dd className="text-sm text-gray-900">{dash(email)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">Straße / Nr.</dt>
-                <dd className="text-sm text-gray-900">
-                  {dash(strasse)} {dash(hausnummer)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">PLZ / Ort</dt>
-                <dd className="text-sm text-gray-900">
-                  {dash(plz)} {dash(ort)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">Telefon</dt>
-                <dd className="text-sm text-gray-900">{dash(telefonnummer)}</dd>
-              </div>
+              {[
+                { label: 'Firmenname', value: firmenname },
+                { label: 'E-Mail', value: email },
+                { label: 'Straße / Nr.', value: `${dash(strasse)} ${dash(hausnummer)}` },
+                { label: 'PLZ / Ort', value: `${dash(plz)} ${dash(ort)}` },
+                { label: 'Telefon', value: telefonnummer },
+              ].map((item) => (
+                <div key={item.label}>
+                  <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
+                  <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
+                </div>
+              ))}
             </dl>
 
-            <h5 className="font-medium text-gray-700 mt-4">Ansprechpartner</h5>
+            <h5 className={`font-medium ${textClass} mt-4`}>Ansprechpartner</h5>
             <dl className="grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-2">
-              <div>
-                <dt className="text-sm text-gray-500">Vorname</dt>
-                <dd className="text-sm text-gray-900">{dash(ansprechpartner?.vorname)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">Nachname</dt>
-                <dd className="text-sm text-gray-900">{dash(ansprechpartner?.name)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">Position</dt>
-                <dd className="text-sm text-gray-900">{dash(ansprechpartner?.position)}</dd>
-              </div>
+              {[
+                { label: 'Vorname', value: ansprechpartner?.vorname },
+                { label: 'Nachname', value: ansprechpartner?.name },
+                { label: 'Position', value: ansprechpartner?.position },
+              ].map((item) => (
+                <div key={item.label}>
+                  <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
+                  <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
+                </div>
+              ))}
             </dl>
           </div>
 
           {/* Internet & Firewall */}
           <div className="space-y-2 mb-6">
-            <h4 className="font-semibold text-gray-800">Internet &amp; Firewall</h4>
+            <h4 className={`font-semibold ${textClass}`}>Internet &amp; Firewall</h4>
             <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
-              <div>
-                <dt className="text-sm text-gray-500">Internetzugang</dt>
-                <dd className="text-sm text-gray-900">{dash(internet?.zugang)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">Firewall-Modell</dt>
-                <dd className="text-sm text-gray-900">{dash(internet?.firewall_modell)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">Feste IP</dt>
-                <dd className="text-sm text-gray-900">{yesNo(internet?.feste_ip)}</dd>
-              </div>
-              {internet?.feste_ip ? (
-                <div>
-                  <dt className="text-sm text-gray-500">IP-Adresse</dt>
-                  <dd className="text-sm text-gray-900">{dash(internet?.ip_adresse)}</dd>
+              {[
+                { label: 'Internetzugang', value: internet?.zugang },
+                { label: 'Firewall-Modell', value: internet?.firewall_modell },
+                { label: 'Feste IP', value: yesNo(internet?.feste_ip) },
+                ...(internet?.feste_ip ? [{ label: 'IP-Adresse', value: internet?.ip_adresse }] : []),
+                { label: 'VPN erforderlich', value: yesNo(internet?.vpn_erforderlich) },
+                { label: 'VPN-User (Anzahl)', value: internet?.vpn_user_anzahl },
+              ].map((item) => (
+                <div key={item.label}>
+                  <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
+                  <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
                 </div>
-              ) : null}
-              <div>
-                <dt className="text-sm text-gray-500">VPN erforderlich</dt>
-                <dd className="text-sm text-gray-900">{yesNo(internet?.vpn_erforderlich)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">VPN-User (Anzahl)</dt>
-                <dd className="text-sm text-gray-900">{dash(internet?.vpn_user_anzahl)}</dd>
-              </div>
+              ))}
             </dl>
           </div>
 
           {/* Benutzer */}
           <div className="space-y-2 mb-6">
-            <h4 className="font-semibold text-gray-800">Benutzer</h4>
+            <h4 className={`font-semibold ${textClass}`}>Benutzer</h4>
             <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
-              <div>
-                <dt className="text-sm text-gray-500">Anzahl User im Netz</dt>
-                <dd className="text-sm text-gray-900">{dash(users?.netz_user_anzahl)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">Anzahl Mail-User</dt>
-                <dd className="text-sm text-gray-900">{dash(users?.mail_user_anzahl)}</dd>
-              </div>
+              {[
+                { label: 'Anzahl User im Netz', value: users?.netz_user_anzahl },
+                { label: 'Anzahl Mail-User', value: users?.mail_user_anzahl },
+              ].map((item) => (
+                <div key={item.label}>
+                  <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
+                  <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
+                </div>
+              ))}
             </dl>
           </div>
 
           {/* Hardware */}
           <div className="space-y-2 mb-6">
-            <h4 className="font-semibold text-gray-800">Hardware</h4>
+            <h4 className={`font-semibold ${textClass}`}>Hardware</h4>
             <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
-              <div>
-                <dt className="text-sm text-gray-500">RAID-Level</dt>
-                <dd className="text-sm text-gray-900">{dash(infrastructureData.hardware?.raid_level)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">USV vorhanden</dt>
-                <dd className="text-sm text-gray-900">{yesNo(infrastructureData.hardware?.usv_vorhanden)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">USV-Modell</dt>
-                <dd className="text-sm text-gray-900">{dash(infrastructureData.hardware?.usv_modell)}</dd>
-              </div>
+              {[
+                { label: 'RAID-Level', value: hardware?.raid_level },
+                { label: 'USV vorhanden', value: yesNo(hardware?.usv_vorhanden) },
+                { label: 'USV-Modell', value: hardware?.usv_modell },
+              ].map((item) => (
+                <div key={item.label}>
+                  <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
+                  <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
+                </div>
+              ))}
             </dl>
 
             <div className="mt-2">
-              <dt className="text-sm text-gray-500 mb-1">Verwendete Hardware</dt>
+              <dt className={`text-sm ${textMutedClass} mb-1`}>Verwendete Hardware</dt>
               {verwendeteHardware.length > 0 ? (
-                <ul className="list-disc list-inside text-sm text-gray-900 space-y-1">
+                <ul className="list-disc list-inside text-sm space-y-1">
                   {verwendeteHardware.map((h, i) => (
-                    <li key={i}>{h}</li>
+                    <li key={i} className={textClass}>{h}</li>
                   ))}
                 </ul>
               ) : (
-                <p className="text-sm text-gray-400">—</p>
+                <p className={`text-sm ${textMutedClass}`}>—</p>
               )}
             </div>
           </div>
 
           {/* Mail */}
           <div className="space-y-2 mb-6">
-            <h4 className="font-semibold text-gray-800">Mail</h4>
+            <h4 className={`font-semibold ${textClass}`}>Mail</h4>
             <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
-              <div>
-                <dt className="text-sm text-gray-500">Mail-Speicherort</dt>
-                <dd className="text-sm text-gray-900">{dash(mail?.mail_speicherort)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">Mail-Server Volumen</dt>
-                <dd className="text-sm text-gray-900">{dash(mail?.mail_server_volumen)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">POP3-Connector</dt>
-                <dd className="text-sm text-gray-900">{yesNo(mail?.pop3_connector)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">Sonstige Mailadressen</dt>
-                <dd className="text-sm text-gray-900">{dash(mail?.sonstige_mailadressen)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">Mobiler Zugriff</dt>
-                <dd className="text-sm text-gray-900">{yesNo(mail?.mobiler_zugriff)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">Zertifikat erforderlich</dt>
-                <dd className="text-sm text-gray-900">{yesNo(mail?.zertifikat_erforderlich)}</dd>
-              </div>
+              {[
+                { label: 'Mail-Speicherort', value: mail?.mail_speicherort },
+                { label: 'Mail-Server Volumen', value: mail?.mail_server_volumen },
+                { label: 'POP3-Connector', value: yesNo(mail?.pop3_connector) },
+                { label: 'Sonstige Mailadressen', value: mail?.sonstige_mailadressen },
+                { label: 'Mobiler Zugriff', value: yesNo(mail?.mobiler_zugriff) },
+                { label: 'Zertifikat erforderlich', value: yesNo(mail?.zertifikat_erforderlich) },
+              ].map((item) => (
+                <div key={item.label}>
+                  <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
+                  <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
+                </div>
+              ))}
             </dl>
           </div>
 
           {/* Software */}
           <div className="space-y-2 mb-6">
-            <h4 className="font-semibold text-gray-800">Software</h4>
+            <h4 className={`font-semibold ${textClass}`}>Software</h4>
             <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
-              <div>
-                <dt className="text-sm text-gray-500">Virenschutz</dt>
-                <dd className="text-sm text-gray-900">{dash(software?.virenschutz)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">Schnittstellen</dt>
-                <dd className="text-sm text-gray-900">{dash(software?.schnittstellen)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">Wartungsvertrag</dt>
-                <dd className="text-sm text-gray-900">{yesNo(software?.wartungsvertrag)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">Migration Support</dt>
-                <dd className="text-sm text-gray-900">{yesNo(software?.migration_support)}</dd>
-              </div>
+              {[
+                { label: 'Virenschutz', value: software?.virenschutz },
+                { label: 'Schnittstellen', value: software?.schnittstellen },
+                { label: 'Wartungsvertrag', value: yesNo(software?.wartungsvertrag) },
+                { label: 'Migration Support', value: yesNo(software?.migration_support) },
+              ].map((item) => (
+                <div key={item.label}>
+                  <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
+                  <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
+                </div>
+              ))}
             </dl>
 
             <div className="mt-2">
-              <dt className="text-sm text-gray-500 mb-1">Verwendete Applikationen (Text)</dt>
-              <dd className="text-sm text-gray-900 whitespace-pre-line">{appsText.trim() ? appsText : '—'}</dd>
+              <dt className={`text-sm ${textMutedClass} mb-1`}>Verwendete Applikationen (Text)</dt>
+              <dd className={`text-sm ${textClass} whitespace-pre-line`}>{appsText.trim() ? appsText : '—'}</dd>
             </div>
 
             <div className="mt-2">
-              <dt className="text-sm text-gray-500 mb-1">Verwendete Applikationen (Liste)</dt>
+              <dt className={`text-sm ${textMutedClass} mb-1`}>Verwendete Applikationen (Liste)</dt>
               {appsList.length > 0 ? (
-                <ul className="list-disc list-inside text-sm text-gray-900 space-y-1">
+                <ul className="list-disc list-inside text-sm space-y-1">
                   {appsList.map((app, i) => (
-                    <li key={i}>{app}</li>
+                    <li key={i} className={textClass}>{app}</li>
                   ))}
                 </ul>
               ) : (
-                <p className="text-sm text-gray-400">—</p>
+                <p className={`text-sm ${textMutedClass}`}>—</p>
               )}
             </div>
           </div>
 
           {/* Backup */}
           <div className="space-y-2 mb-6">
-            <h4 className="font-semibold text-gray-800">Backup</h4>
+            <h4 className={`font-semibold ${textClass}`}>Backup</h4>
             <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
-              <div>
-                <dt className="text-sm text-gray-500">Strategie</dt>
-                <dd className="text-sm text-gray-900">{dash(backup?.strategie)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">NAS vorhanden</dt>
-                <dd className="text-sm text-gray-900">{yesNo(backup?.nas_vorhanden)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">Externe HDDs</dt>
-                <dd className="text-sm text-gray-900">{dash(backup?.externe_hdds)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">Doku vorhanden</dt>
-                <dd className="text-sm text-gray-900">{yesNo(backup?.dokumentation_vorhanden)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">Admin-Passwörter bekannt</dt>
-                <dd className="text-sm text-gray-900">{yesNo(backup?.admin_passwoerter_bekannt)}</dd>
-              </div>
+              {[
+                { label: 'Strategie', value: backup?.strategie },
+                { label: 'NAS vorhanden', value: yesNo(backup?.nas_vorhanden) },
+                { label: 'Externe HDDs', value: backup?.externe_hdds },
+                { label: 'Doku vorhanden', value: yesNo(backup?.dokumentation_vorhanden) },
+                { label: 'Admin-Passwörter bekannt', value: yesNo(backup?.admin_passwoerter_bekannt) },
+              ].map((item) => (
+                <div key={item.label}>
+                  <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
+                  <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
+                </div>
+              ))}
             </dl>
           </div>
 
           {/* Sonstiges */}
           <div className="space-y-2">
-            <h4 className="font-semibold text-gray-800">Sonstiges</h4>
-            <p className="text-sm text-gray-900 whitespace-pre-line">{dash(sonstiges?.text)}</p>
+            <h4 className={`font-semibold ${textClass}`}>Sonstiges</h4>
+            <p className={`text-sm ${textClass} whitespace-pre-line`}>{dash(sonstiges?.text)}</p>
           </div>
 
           <div className="flex justify-between mt-6">
@@ -975,7 +795,7 @@ export default function OnboardingSection({
                 className={`flex items-center justify-center w-10 h-10 rounded-full border-2 ${
                   currentOnboardingStep >= step.id
                     ? 'bg-blue-600 border-blue-600 text-white'
-                    : 'bg-white border-gray-300 text-gray-400'
+                    : `${isDark ? 'bg-gray-700' : 'bg-white'} ${borderClass} ${textMutedClass}`
                 }`}
               >
                 {currentOnboardingStep > step.id ? (
@@ -987,14 +807,16 @@ export default function OnboardingSection({
               <div className="ml-3">
                 <p
                   className={`text-sm font-medium ${
-                    currentOnboardingStep >= step.id ? 'text-blue-600' : 'text-gray-400'
+                    currentOnboardingStep >= step.id ? 'text-blue-600' : textMutedClass
                   }`}
                 >
                   {step.title}
                 </p>
-                <p className="text-xs text-gray-500">{step.description}</p>
+                <p className={`text-xs ${textMutedClass}`}>{step.description}</p>
               </div>
-              {step.id < onboardingSteps.length && <ChevronRight className="w-5 h-5 text-gray-400 mx-4" />}
+              {step.id < onboardingSteps.length && (
+                <ChevronRight className={`w-5 h-5 ${textMutedClass} mx-4`} />
+              )}
             </div>
           ))}
         </div>

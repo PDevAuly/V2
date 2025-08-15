@@ -1,4 +1,3 @@
-// src/features/kalkulation/CalculationSection.jsx
 import React from 'react';
 
 export default function CalculationSection({
@@ -8,8 +7,22 @@ export default function CalculationSection({
   mwst,
   setMwst,
   loading,
-  onSubmit, // kommt aus Dashboard -> handleCalculationSubmit
+  onSubmit,
+  isDark, // Dark Mode Prop hinzugefügt
 }) {
+  // Dark Mode Klassen
+  const bgClass = isDark ? 'bg-gray-800' : 'bg-white';
+  const borderClass = isDark ? 'border-gray-700' : 'border-gray-200';
+  const textClass = isDark ? 'text-gray-100' : 'text-gray-900';
+  const textSecondaryClass = isDark ? 'text-gray-300' : 'text-gray-700';
+  const textMutedClass = isDark ? 'text-gray-400' : 'text-gray-500';
+  const inputClass = isDark 
+    ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500'
+    : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:ring-blue-500 focus:border-blue-500';
+  const bgHoverClass = isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-50';
+  const tableHeaderClass = isDark ? 'bg-gray-700' : 'bg-gray-50';
+  const sumBoxClass = isDark ? 'bg-gray-700' : 'bg-gray-50';
+
   // Zeilen-Helper
   const addDienstleistung = () => {
     setCalculationForm((prev) => ({
@@ -54,17 +67,17 @@ export default function CalculationSection({
   const sumBrutto = sumNetto + sumMwst;
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+    <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
       <form onSubmit={onSubmit} className="space-y-6">
         {/* Kopf */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Kunde auswählen *</label>
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Kunde auswählen *</label>
             <select
               required
               value={calculationForm.kunde_id}
               onChange={(e) => setCalculationForm({ ...calculationForm, kunde_id: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
             >
               <option value="">Kunde wählen...</option>
               {customers.map((k) => (
@@ -76,7 +89,7 @@ export default function CalculationSection({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Standard-Stundensatz (€) *</label>
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Standard-Stundensatz (€) *</label>
             <input
               type="number"
               required
@@ -85,28 +98,28 @@ export default function CalculationSection({
               onChange={(e) =>
                 setCalculationForm({ ...calculationForm, stundensatz: Number(e.target.value) })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
               placeholder="85.00"
             />
-            <p className="text-xs text-gray-500 mt-1">Gilt für Zeilen ohne eigenen Satz.</p>
+            <p className={`text-xs ${textMutedClass} mt-1`}>Gilt für Zeilen ohne eigenen Satz.</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">MwSt (%)</label>
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>MwSt (%)</label>
             <input
               type="number"
               step="0.1"
               value={mwst}
               onChange={(e) => setMwst(Number(e.target.value))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
             />
           </div>
         </div>
 
         {/* Tabelle */}
-        <div className="border-t pt-6">
+        <div className={`border-t ${borderClass} pt-6`}>
           <div className="flex items-center justify-between mb-3">
-            <h4 className="text-md font-medium text-gray-900">Dienstleistungen</h4>
+            <h4 className={`text-md font-medium ${textClass}`}>Dienstleistungen</h4>
             <button
               type="button"
               onClick={addDienstleistung}
@@ -118,25 +131,25 @@ export default function CalculationSection({
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className={`${tableHeaderClass} border-b ${borderClass}`}>
                 <tr>
-                  <th className="px-4 py-2 text-left font-medium text-gray-600">Beschreibung</th>
-                  <th className="px-4 py-2 text-right font-medium text-gray-600">Anzahl</th>
-                  <th className="px-4 py-2 text-right font-medium text-gray-600">Std/Einheit</th>
-                  <th className="px-4 py-2 text-right font-medium text-gray-600">Stundensatz (€)</th>
-                  <th className="px-4 py-2 text-right font-medium text-gray-600">Stunden gesamt</th>
-                  <th className="px-4 py-2 text-right font-medium text-gray-600">Betrag (€)</th>
-                  <th className="px-4 py-2 text-left font-medium text-gray-600">Notiz</th>
+                  <th className={`px-4 py-2 text-left font-medium ${textSecondaryClass}`}>Beschreibung</th>
+                  <th className={`px-4 py-2 text-right font-medium ${textSecondaryClass}`}>Anzahl</th>
+                  <th className={`px-4 py-2 text-right font-medium ${textSecondaryClass}`}>Std/Einheit</th>
+                  <th className={`px-4 py-2 text-right font-medium ${textSecondaryClass}`}>Stundensatz (€)</th>
+                  <th className={`px-4 py-2 text-right font-medium ${textSecondaryClass}`}>Stunden gesamt</th>
+                  <th className={`px-4 py-2 text-right font-medium ${textSecondaryClass}`}>Betrag (€)</th>
+                  <th className={`px-4 py-2 text-left font-medium ${textSecondaryClass}`}>Notiz</th>
                   <th className="px-2 py-2"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className={`divide-y ${borderClass}`}>
                 {calculationForm.dienstleistungen.map((d, i) => {
                   const hours = rowHours(d);
                   const rate = rowRate(d);
                   const total = hours * rate;
                   return (
-                    <tr key={i} className="bg-white hover:bg-gray-50">
+                    <tr key={i} className={`${bgClass} ${bgHoverClass}`}>
                       <td className="px-4 py-2">
                         <div className="flex items-center gap-2">
                           <input
@@ -144,7 +157,7 @@ export default function CalculationSection({
                             required
                             value={d.beschreibung}
                             onChange={(e) => updateDienstleistung(i, 'beschreibung', e.target.value)}
-                            className="w-full px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className={`w-full px-2 py-1 border rounded-md focus:outline-none focus:ring-1 ${inputClass}`}
                             placeholder="z.B. Server-Setup"
                           />
                           <button
@@ -163,7 +176,7 @@ export default function CalculationSection({
                           min="1"
                           value={d.anzahl}
                           onChange={(e) => updateDienstleistung(i, 'anzahl', Number(e.target.value))}
-                          className="w-24 text-right px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          className={`w-24 text-right px-2 py-1 border rounded-md focus:outline-none focus:ring-1 ${inputClass}`}
                         />
                       </td>
                       <td className="px-4 py-2 text-right">
@@ -174,7 +187,7 @@ export default function CalculationSection({
                           onChange={(e) =>
                             updateDienstleistung(i, 'dauer_pro_einheit', Number(e.target.value))
                           }
-                          className="w-28 text-right px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          className={`w-28 text-right px-2 py-1 border rounded-md focus:outline-none focus:ring-1 ${inputClass}`}
                         />
                       </td>
                       <td className="px-4 py-2 text-right">
@@ -189,15 +202,15 @@ export default function CalculationSection({
                               e.target.value === '' ? undefined : Number(e.target.value)
                             )
                           }
-                          className="w-28 text-right px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          className={`w-28 text-right px-2 py-1 border rounded-md focus:outline-none focus:ring-1 ${inputClass}`}
                           placeholder={String(calculationForm.stundensatz)}
                         />
-                        <p className="text-[10px] text-gray-400 mt-0.5">
+                        <p className={`text-[10px] ${textMutedClass} mt-0.5`}>
                           leer = {Number(calculationForm.stundensatz).toFixed(2)} €
                         </p>
                       </td>
-                      <td className="px-4 py-2 text-right tabular-nums">{hours.toFixed(2)}</td>
-                      <td className="px-4 py-2 text-right tabular-nums">
+                      <td className={`px-4 py-2 text-right tabular-nums ${textClass}`}>{hours.toFixed(2)}</td>
+                      <td className={`px-4 py-2 text-right tabular-nums ${textClass}`}>
                         {total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
                       </td>
                       <td className="px-4 py-2">
@@ -205,7 +218,7 @@ export default function CalculationSection({
                           type="text"
                           value={d.info || ''}
                           onChange={(e) => updateDienstleistung(i, 'info', e.target.value)}
-                          className="w-full px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          className={`w-full px-2 py-1 border rounded-md focus:outline-none focus:ring-1 ${inputClass}`}
                           placeholder="z.B. Remote, vor Ort, Pauschale …"
                         />
                       </td>
@@ -231,22 +244,22 @@ export default function CalculationSection({
 
         {/* Summenbox */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="md:col-start-3 bg-gray-50 border border-gray-200 rounded-md p-4">
+          <div className={`md:col-start-3 ${sumBoxClass} ${borderClass} rounded-md p-4`}>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-700">Summe Netto</span>
-              <span className="font-medium">
+              <span className={`text-sm ${textSecondaryClass}`}>Summe Netto</span>
+              <span className={`font-medium ${textClass}`}>
                 {sumNetto.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
               </span>
             </div>
             <div className="flex items-center justify-between mt-2">
-              <span className="text-sm text-gray-700">MwSt ({mwst}%)</span>
-              <span className="font-medium">
+              <span className={`text-sm ${textSecondaryClass}`}>MwSt ({mwst}%)</span>
+              <span className={`font-medium ${textClass}`}>
                 {sumMwst.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
               </span>
             </div>
-            <div className="flex items-center justify-between mt-2 border-t pt-2">
-              <span className="text-sm font-semibold text-gray-900">Summe Brutto</span>
-              <span className="text-lg font-bold">
+            <div className={`flex items-center justify-between mt-2 border-t ${borderClass} pt-2`}>
+              <span className={`text-sm font-semibold ${textClass}`}>Summe Brutto</span>
+              <span className={`text-lg font-bold ${textClass}`}>
                 {sumBrutto.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
               </span>
             </div>
