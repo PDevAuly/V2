@@ -404,7 +404,6 @@ app.post('/api/onboarding', async (req, res) => {
       return res.status(400).json({ error: 'kunde_id und infrastructure_data sind erforderlich' });
     }
 
-    // Nur die Sektionen nutzen, die wir kennen; Rest als extras zurücklegen
     const KNOWN = {
       hardware: ['verwendete_hardware'],
       mail: ['file_server_volumen','mail_server_volumen','mail_speicherort','pop3_connector','sonstige_mailadressen','besondere_anforderungen','mobiler_zugriff','zertifikat_erforderlich'],
@@ -509,7 +508,7 @@ app.post('/api/onboarding', async (req, res) => {
             software.schnittstellen ?? null
           ]
         );
-        // Falls du eine software_app-Tabelle hast, hier ergänzen.
+      
       }
     } catch (e) {
       warnings.push(`SOFTWARE übersprungen: ${e.message}`);
@@ -564,7 +563,7 @@ app.post('/api/onboarding', async (req, res) => {
       await client.query('ROLLBACK TO SAVEPOINT sp_hardware');
     }
 
-    // 6) OPTIONAL: Onboarding-Details (falls Tabelle existiert)
+    // 6) OPTIONAL: Onboarding-Details
     await client.query('SAVEPOINT sp_details');
     try {
       await client.query(
@@ -599,7 +598,7 @@ app.post('/api/onboarding', async (req, res) => {
 
 /* ===================== 404 ===================== */
 app.use('*', (req, res) => {
-  console.log('❓ Route nicht gefunden:', req.originalUrl);
+  console.log('Route nicht gefunden:', req.originalUrl);
   res.status(404).json({
     error: 'Route nicht gefunden: ' + req.originalUrl,
     available_routes: [
@@ -618,7 +617,7 @@ app.use('*', (req, res) => {
 /* ===================== Start ===================== */
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server läuft auf Port ${PORT}`);
-  console.log(`📡 API verfügbar unter: http://localhost:${PORT}/api`);
-  console.log('🐳 Docker-Modus mit echter Datenbank');
+  console.log(`Server läuft auf Port ${PORT}`);
+  console.log(`API verfügbar unter: http://localhost:${PORT}/api`);
+  console.log('Docker-Modus mit echter Datenbank');
 });

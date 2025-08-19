@@ -1,4 +1,5 @@
-import React from 'react';
+// src/features/onboarding/OnboardingSection.jsx
+import React, { useState } from 'react';
 import {
   Building,
   Network,
@@ -10,51 +11,19 @@ import {
   HardDrive,
   CheckCircle,
   ChevronRight,
+  Trash2
 } from 'lucide-react';
 
-export default function OnboardingSection({
-  currentOnboardingStep,
-  setCurrentOnboardingStep,
+/* ------------------------- STEP 1 (Top-Level) ------------------------- */
+function Step1({
+  classes,
   onboardingCustomerData,
   setOnboardingCustomerData,
-  infrastructureData,
-  setInfrastructureData,
-  loading,
-  onFinalSubmit,
-  isDark, // Dark Mode Status als Prop
+  onNext,
 }) {
-  const onboardingSteps = [
-    { id: 1, title: 'Kundendaten', icon: Building, description: 'Firmendaten und Kontakt' },
-    { id: 2, title: 'IT-Infrastruktur', icon: Network, description: 'Technische Dokumentation' },
-    { id: 3, title: 'Bestätigung', icon: CheckCircle, description: 'Daten prüfen und speichern' },
-  ];
+  const { bgClass, borderClass, textClass, textSecondaryClass, textMutedClass, inputClass } = classes;
 
-  // Dark Mode Klassen
-  const bgClass = isDark ? 'bg-gray-800' : 'bg-white';
-  const borderClass = isDark ? 'border-gray-700' : 'border-gray-200';
-  const textClass = isDark ? 'text-gray-100' : 'text-gray-900';
-  const textSecondaryClass = isDark ? 'text-gray-300' : 'text-gray-700';
-  const textMutedClass = isDark ? 'text-gray-400' : 'text-gray-500';
-  const inputClass = isDark 
-    ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500'
-    : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:ring-blue-500 focus:border-blue-500';
-  const bgHoverClass = isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-50';
-
-  const handleOnboardingCustomerSubmit = () => {
-    if (!onboardingCustomerData.firmenname || !onboardingCustomerData.email) {
-      alert('Bitte füllen Sie mindestens Firmenname und E-Mail aus');
-      return;
-    }
-    setCurrentOnboardingStep(2);
-  };
-
-  const handleInfrastructureSubmit = () => setCurrentOnboardingStep(3);
-
-  const yesNo = (v) => (v ? 'Ja' : 'Nein');
-  const dash = (v) => (v !== undefined && v !== null && String(v).trim() !== '' ? String(v) : '—');
-
-  // ---- STEP 1: Kundendaten ---------------------------------------------------
-  const Step1 = () => (
+  return (
     <div className="space-y-6">
       <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
         <h3 className={`text-lg font-medium ${textClass} mb-4`}>Firmendaten</h3>
@@ -117,7 +86,7 @@ export default function OnboardingSection({
 
         <div className="flex justify-end mt-6">
           <button
-            onClick={handleOnboardingCustomerSubmit}
+            onClick={onNext}
             className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
           >
             Weiter zur IT-Infrastruktur →
@@ -126,15 +95,64 @@ export default function OnboardingSection({
       </div>
     </div>
   );
+}
 
-  // ---- STEP 2: Infrastruktur -------------------------------------------------
-  const Step2 = () => (
+/* ------------------------- STEP 2 (Top-Level) ------------------------- */
+function Step2({
+  classes,
+  isDark,
+  infrastructureData,
+  setInfrastructureData,
+  onNext,
+  onBack,
+}) {
+  const { bgClass, borderClass, textClass, textSecondaryClass, textMutedClass, inputClass } = classes;
+
+  // State für Systemanforderungen
+  const [selectedRequirementType, setSelectedRequirementType] = useState('');
+  const [requirementDetail, setRequirementDetail] = useState('');
+
+  // Funktion zum Hinzufügen einer Anforderung
+  const addRequirement = () => {
+    if (selectedRequirementType && requirementDetail) {
+      setInfrastructureData({
+        ...infrastructureData,
+        software: {
+          ...infrastructureData.software,
+          requirements: [
+            ...(infrastructureData.software?.requirements || []),
+            {
+              type: selectedRequirementType,
+              detail: requirementDetail
+            }
+          ]
+        }
+      });
+      setSelectedRequirementType('');
+      setRequirementDetail('');
+    }
+  };
+
+  // Funktion zum Entfernen einer Anforderung
+  const removeRequirement = (index) => {
+    const updatedRequirements = [...(infrastructureData.software?.requirements || [])];
+    updatedRequirements.splice(index, 1);
+    setInfrastructureData({
+      ...infrastructureData,
+      software: {
+        ...infrastructureData.software,
+        requirements: updatedRequirements
+      }
+    });
+  };
+
+  return (
     <div className="space-y-6">
-      {/* Internet & Firewall */}
+      {/* Netzwerk */}
       <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
         <div className="flex items-center mb-4">
           <Shield className="w-5 h-5 text-blue-500 mr-2" />
-          <h3 className={`text-lg font-medium ${textClass}`}>Internet & Firewall</h3>
+          <h3 className={`text-lg font-medium ${textClass}`}>Netzwerk</h3>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -225,40 +243,6 @@ export default function OnboardingSection({
               VPN-Einwahl erforderlich
             </label>
           </div>
-        </div>
-      </div>
-
-      {/* Benutzer */}
-      <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
-        <div className="flex items-center mb-4">
-          <User className="w-5 h-5 text-green-500 mr-2" />
-          <h3 className={`text-lg font-medium ${textClass}`}>Benutzer</h3>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {[
-            { label: 'Anzahl User im Netz', key: 'netz_user_anzahl', type: 'number' },
-            { label: 'Anzahl Mail-User', key: 'mail_user_anzahl', type: 'number' },
-          ].map((field) => (
-            <div key={field.key}>
-              <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>{field.label}</label>
-              <input
-                type={field.type}
-                value={infrastructureData.users[field.key]}
-                onChange={(e) =>
-                  setInfrastructureData({
-                    ...infrastructureData,
-                    users: {
-                      ...infrastructureData.users,
-                      [field.key]: parseInt(e.target.value) || 0,
-                    },
-                  })
-                }
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-                min="0"
-              />
-            </div>
-          ))}
         </div>
       </div>
 
@@ -378,35 +362,155 @@ export default function OnboardingSection({
       </div>
 
       {/* Mail */}
-      <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
-        <div className="flex items-center mb-4">
-          <Mail className="w-5 h-5 text-orange-500 mr-2" />
-          <h3 className={`text-lg font-medium ${textClass}`}>Mail Server</h3>
-        </div>
+<div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
+  <div className="flex items-center mb-4">
+    <Mail className="w-5 h-5 text-orange-500 mr-2" />
+    <h3 className={`text-lg font-medium ${textClass}`}>Mail Server</h3>
+  </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {[
-            { label: 'Mail Speicherort', key: 'mail_speicherort', placeholder: 'z.B. Exchange, Office 365' },
-            { label: 'Mail Server Volumen', key: 'mail_server_volumen', placeholder: 'z.B. 100 GB' },
-          ].map((field) => (
-            <div key={field.key}>
-              <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>{field.label}</label>
-              <input
-                type="text"
-                value={infrastructureData.mail[field.key]}
-                onChange={(e) =>
-                  setInfrastructureData({
-                    ...infrastructureData,
-                    mail: { ...infrastructureData.mail, [field.key]: e.target.value },
-                  })
-                }
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-                placeholder={field.placeholder}
-              />
-            </div>
-          ))}
-        </div>
-      </div>
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    {/* Anbieter */}
+    <div>
+      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+        Mail-Anbieter
+      </label>
+      <select
+        value={infrastructureData.mail.anbieter || ""}
+        onChange={(e) =>
+          setInfrastructureData({
+            ...infrastructureData,
+            mail: { ...infrastructureData.mail, anbieter: e.target.value },
+          })
+        }
+        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+      >
+        <option value="">Bitte auswählen</option>
+        <option value="Exchange">Microsoft Exchange</option>
+        <option value="Office365">Microsoft Office 365</option>
+        <option value="Gmail">Google Workspace (Gmail)</option>
+        <option value="IMAP">IMAP/POP3 Server</option>
+        <option value="Other">Anderer Anbieter</option>
+      </select>
+    </div>
+
+    {/* Anzahl Postfächer */}
+    <div>
+      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+        Anzahl Postfächer
+      </label>
+      <input
+        type="number"
+        value={infrastructureData.mail.anzahl_postfach || ""}
+        onChange={(e) =>
+          setInfrastructureData({
+            ...infrastructureData,
+            mail: { ...infrastructureData.mail, anzahl_postfach: e.target.value },
+          })
+        }
+        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+        placeholder="z.B. 25"
+        min="0"
+      />
+    </div>
+
+    {/* Anzahl Shared Mailboxes */}
+    <div>
+      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+        Anzahl Shared Mailboxes
+      </label>
+      <input
+        type="number"
+        value={infrastructureData.mail.anzahl_shared || ""}
+        onChange={(e) =>
+          setInfrastructureData({
+            ...infrastructureData,
+            mail: { ...infrastructureData.mail, anzahl_shared: e.target.value },
+          })
+        }
+        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+        placeholder="z.B. 5"
+        min="0"
+      />
+    </div>
+
+    {/* Gesamt Speicher */}
+    <div>
+      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+        Gesamt Speicher (GB)
+      </label>
+      <input
+        type="number"
+        value={infrastructureData.mail.gesamt_speicher || ""}
+        onChange={(e) =>
+          setInfrastructureData({
+            ...infrastructureData,
+            mail: { ...infrastructureData.mail, gesamt_speicher: e.target.value },
+          })
+        }
+        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+        placeholder="z.B. 500"
+        min="0"
+        step="0.1"
+      />
+    </div>
+
+    {/* Zusätzliche Mail-Felder (optional) */}
+    <div className="flex items-center">
+      <input
+        type="checkbox"
+        id="pop3_connector"
+        checked={infrastructureData.mail.pop3_connector || false}
+        onChange={(e) =>
+          setInfrastructureData({
+            ...infrastructureData,
+            mail: { ...infrastructureData.mail, pop3_connector: e.target.checked },
+          })
+        }
+        className={`h-4 w-4 text-blue-600 rounded focus:ring-blue-500 ${isDark ? 'border-gray-500' : 'border-gray-300'}`}
+      />
+      <label htmlFor="pop3_connector" className={`ml-2 text-sm ${textSecondaryClass}`}>
+        POP3-Connector vorhanden
+      </label>
+    </div>
+
+    <div className="flex items-center">
+      <input
+        type="checkbox"
+        id="mobiler_zugriff"
+        checked={infrastructureData.mail.mobiler_zugriff || false}
+        onChange={(e) =>
+          setInfrastructureData({
+            ...infrastructureData,
+            mail: { ...infrastructureData.mail, mobiler_zugriff: e.target.checked },
+          })
+        }
+        className={`h-4 w-4 text-blue-600 rounded focus:ring-blue-500 ${isDark ? 'border-gray-500' : 'border-gray-300'}`}
+      />
+      <label htmlFor="mobiler_zugriff" className={`ml-2 text-sm ${textSecondaryClass}`}>
+        Mobiler Zugriff aktiviert
+      </label>
+    </div>
+
+    {/* Informationen */}
+    <div className="md:col-span-2">
+      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+        Informationen & Besonderheiten
+      </label>
+      <textarea
+        value={infrastructureData.mail.informationen || ""}
+        onChange={(e) =>
+          setInfrastructureData({
+            ...infrastructureData,
+            mail: { ...infrastructureData.mail, informationen: e.target.value },
+          })
+        }
+        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+        rows="3"
+        placeholder="Besondere Konfigurationen, Migrationshinweise, etc."
+      />
+    </div>
+  </div>
+</div>
 
       {/* Software */}
       <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
@@ -416,28 +520,151 @@ export default function OnboardingSection({
         </div>
 
         <div className="grid grid-cols-1 gap-6">
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Software-Name */}
+            <div>
+              <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Software-Name</label>
+              <input
+                type="text"
+                value={infrastructureData.software?.name || ''}
+                onChange={(e) =>
+                  setInfrastructureData({
+                    ...infrastructureData,
+                    software: { ...infrastructureData.software, name: e.target.value },
+                  })
+                }
+                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+                placeholder="z.B. Microsoft Office"
+              />
+            </div>
+
+            {/* Lizenzen */}
+            <div>
+              <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Anzahl Lizenzen</label>
+              <input
+                type="number"
+                value={infrastructureData.software?.licenses || ''}
+                onChange={(e) =>
+                  setInfrastructureData({
+                    ...infrastructureData,
+                    software: { ...infrastructureData.software, licenses: e.target.value },
+                  })
+                }
+                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+                placeholder="z.B. 25"
+                min="0"
+              />
+            </div>
+
+            {/* Kritisch */}
+            <div>
+              <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Kritikalität</label>
+              <select
+                value={infrastructureData.software?.critical || ''}
+                onChange={(e) =>
+                  setInfrastructureData({
+                    ...infrastructureData,
+                    software: { ...infrastructureData.software, critical: e.target.value },
+                  })
+                }
+                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+              >
+                <option value="">Bitte auswählen</option>
+                <option value="hoch">Hoch (übernehmen)</option>
+                <option value="niedrig">Niedrig(nicht übernehmen)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Systemanforderungen - Auswahl */}
           <div>
-            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Virenschutz</label>
-            <input
-              type="text"
-              value={infrastructureData.software.virenschutz}
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Systemanforderungen hinzufügen</label>
+            <div className="flex gap-2 mb-2">
+              <select
+                value={selectedRequirementType}
+                onChange={(e) => setSelectedRequirementType(e.target.value)}
+                className={`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+              >
+                <option value="">Kategorie wählen</option>
+                <option value="CPU">CPU</option>
+                <option value="RAM">RAM</option>
+                <option value="Speicher">Speicher</option>
+                <option value="Betriebssystem">Betriebssystem</option>
+                <option value="Zielumgebung">Zielumgebung</option>
+                <option value="Netzwerk">Netzwerk</option>
+                <option value="Sonstiges">Sonstiges</option>
+              </select>
+
+              <input
+                type="text"
+                value={requirementDetail}
+                onChange={(e) => setRequirementDetail(e.target.value)}
+                className={`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+                placeholder="Details (z.B. '4 Kerne')"
+                disabled={!selectedRequirementType}
+              />
+
+              <button
+                type="button"
+                onClick={addRequirement}
+                disabled={!selectedRequirementType || !requirementDetail}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400"
+              >
+                Hinzufügen
+              </button>
+            </div>
+
+            {/* Anzeige der Systemanforderungen */}
+            <div className="mt-4">
+              <h4 className={`text-sm font-medium ${textSecondaryClass} mb-2`}>Aktuelle Systemanforderungen:</h4>
+              {infrastructureData.software?.requirements?.length > 0 ? (
+                <ul className="space-y-2">
+                  {infrastructureData.software.requirements.map((req, index) => (
+                    <li key={index} className="flex justify-between items-center p-2 bg-gray-100 dark:bg-gray-700 rounded">
+                      <span>
+                        <strong>{req.type}:</strong> {req.detail}
+                      </span>
+                      <button
+                        onClick={() => removeRequirement(index)}
+                        className="text-red-500 hover:text-red-700"
+                        aria-label="Anforderung entfernen"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className={`text-sm ${textSecondaryClass}`}>Noch keine Anforderungen definiert</p>
+              )}
+            </div>
+          </div>
+
+          {/* Beschreibung */}
+          <div>
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Beschreibung</label>
+            <textarea
+              value={infrastructureData.software?.description || ''}
               onChange={(e) =>
                 setInfrastructureData({
                   ...infrastructureData,
-                  software: { ...infrastructureData.software, virenschutz: e.target.value },
+                  software: { ...infrastructureData.software, description: e.target.value },
                 })
               }
               className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-              placeholder="z.B. Sophos, Kaspersky"
+              rows="3"
+              placeholder="Funktionsbeschreibung der Software"
             />
           </div>
 
+          {/* Verwendete Applikationen */}
           <div>
             <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
-              Verwendete Applikationen (eine pro Zeile)
+              Wichtige Applikationen (eine pro Zeile)
             </label>
             <textarea
-              value={infrastructureData.software.verwendete_applikationen_text || ''}
+              value={infrastructureData.software?.verwendete_applikationen_text || ''}
               onChange={(e) =>
                 setInfrastructureData({
                   ...infrastructureData,
@@ -445,8 +672,8 @@ export default function OnboardingSection({
                     ...infrastructureData.software,
                     verwendete_applikationen_text: e.target.value,
                     verwendete_applikationen: e.target.value
-                      .split(/\n+/)
-                      .map((s) => s.trim())
+                      .split('\n')
+                      .map(s => s.trim())
                       .filter(Boolean),
                   },
                 })
@@ -463,59 +690,131 @@ export default function OnboardingSection({
       <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
         <div className="flex items-center mb-4">
           <HardDrive className="w-5 h-5 text-red-500 mr-2" />
-          <h3 className={`text-lg font-medium ${textClass}`}>Backup</h3>
+          <h3 className={`text-lg font-medium ${textClass}`}>Backup-Konfiguration</h3>
         </div>
 
-        <div className="grid grid-cols-1 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Tool */}
           <div>
-            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Backup-Strategie</label>
-            <textarea
-              value={infrastructureData.backup.strategie}
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+              Backup-Tool
+            </label>
+            <select
+              value={infrastructureData.backup?.tool || ""}
               onChange={(e) =>
                 setInfrastructureData({
                   ...infrastructureData,
-                  backup: { ...infrastructureData.backup, strategie: e.target.value },
+                  backup: { ...infrastructureData.backup, tool: e.target.value },
                 })
               }
               className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-              rows="2"
-              placeholder="z.B. Tägliches Backup auf NAS, wöchentlich Offsite…"
+            >
+              <option value="">Bitte auswählen</option>
+              <option value="Veeam">Veeam</option>
+              <option value="Acronis">Acronis</option>
+              <option value="Borg">Borg Backup</option>
+              <option value="Custom">Eigenes Tool</option>
+            </select>
+          </div>
+
+          {/* Intervall */}
+          <div>
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+              Backup-Intervall
+            </label>
+            <select
+              value={infrastructureData.backup?.interval || ""}
+              onChange={(e) =>
+                setInfrastructureData({
+                  ...infrastructureData,
+                  backup: { ...infrastructureData.backup, interval: e.target.value },
+                })
+              }
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+            >
+              <option value="">Bitte auswählen</option>
+              <option value="täglich">Täglich</option>
+              <option value="wöchentlich">Wöchentlich</option>
+              <option value="monatlich">Monatlich</option>
+              <option value="stündlich">Stündlich</option>
+            </select>
+          </div>
+
+          {/* Aufbewahrung */}
+          <div>
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+              Aufbewahrungsdauer
+            </label>
+            <input
+              type="text"
+              value={infrastructureData.backup?.retention || ""}
+              onChange={(e) =>
+                setInfrastructureData({
+                  ...infrastructureData,
+                  backup: { ...infrastructureData.backup, retention: e.target.value },
+                })
+              }
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+              placeholder="z.B. 30 Tage"
             />
           </div>
 
-          <div className="flex items-center space-x-6">
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={infrastructureData.backup.nas_vorhanden}
-                onChange={(e) =>
-                  setInfrastructureData({
-                    ...infrastructureData,
-                    backup: { ...infrastructureData.backup, nas_vorhanden: e.target.checked },
-                  })
-                }
-                className={`h-4 w-4 text-blue-600 rounded focus:ring-blue-500 ${isDark ? 'border-gray-500' : 'border-gray-300'}`}
-              />
-              <span className={`ml-2 text-sm ${textSecondaryClass}`}>NAS vorhanden</span>
+          {/* Speicherort */}
+          <div>
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+              Speicherort
             </label>
+            <input
+              type="text"
+              value={infrastructureData.backup?.location || ""}
+              onChange={(e) =>
+                setInfrastructureData({
+                  ...infrastructureData,
+                  backup: { ...infrastructureData.backup, location: e.target.value },
+                })
+              }
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+              placeholder="z.B. NAS, Cloud, externer Server"
+            />
+          </div>
 
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={infrastructureData.backup.dokumentation_vorhanden}
-                onChange={(e) =>
-                  setInfrastructureData({
-                    ...infrastructureData,
-                    backup: {
-                      ...infrastructureData.backup,
-                      dokumentation_vorhanden: e.target.checked,
-                    },
-                  })
-                }
-                className={`h-4 w-4 text-blue-600 rounded focus:ring-blue-500 ${isDark ? 'border-gray-500' : 'border-gray-300'}`}
-              />
-              <span className={`ml-2 text-sm ${textSecondaryClass}`}>Dokumentation vorhanden</span>
+          {/* Größe */}
+          <div>
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+              Geschätzte Größe (GB)
             </label>
+            <input
+              type="number"
+              value={infrastructureData.backup?.size || ""}
+              onChange={(e) =>
+                setInfrastructureData({
+                  ...infrastructureData,
+                  backup: { ...infrastructureData.backup, size: e.target.value },
+                })
+              }
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+              placeholder="z.B. 500"
+              step="0.1"
+            />
+          </div>
+
+          {/* Zusätzliche Informationen */}
+          <div className="md:col-span-2">
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+              Zusätzliche Informationen
+            </label>
+            <textarea
+              value={infrastructureData.backup?.info || ""}
+              onChange={(e) =>
+                setInfrastructureData({
+                  ...infrastructureData,
+                  backup: { ...infrastructureData.backup, info: e.target.value },
+                })
+              }
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+              rows="3"
+              placeholder="Weitere Details zur Backup-Strategie"
+            />
           </div>
         </div>
       </div>
@@ -530,7 +829,7 @@ export default function OnboardingSection({
         <div className="grid grid-cols-1 gap-6">
           <div>
             <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
-              Sonstige Anmerkungen oder Informationen
+              Sonstige Anmerkungen oder Informationen zum Kunden
             </label>
             <textarea
               value={infrastructureData.sonstiges?.text || ''}
@@ -550,13 +849,13 @@ export default function OnboardingSection({
 
       <div className="flex justify-between">
         <button
-          onClick={() => setCurrentOnboardingStep(1)}
+          onClick={onBack}
           className="px-6 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors"
         >
           ← Zurück zu Kundendaten
         </button>
         <button
-          onClick={handleInfrastructureSubmit}
+          onClick={onNext}
           className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
         >
           Weiter zur Bestätigung →
@@ -564,225 +863,384 @@ export default function OnboardingSection({
       </div>
     </div>
   );
+}
 
-  // ---- STEP 3: Zusammenfassung ----------------------------------------------
-  const Step3 = () => {
-    const { firmenname, email, strasse, hausnummer, plz, ort, telefonnummer, ansprechpartner } =
-      onboardingCustomerData;
-    const { internet, users, hardware, mail, software, backup, sonstiges } = infrastructureData;
+/* ------------------------- STEP 3 (Top-Level) ------------------------- */
+function Step3({
+  classes,
+  onboardingCustomerData,
+  infrastructureData,
+  loading,
+  onBack,
+  onFinalSubmit,
+}) {
+  const { bgClass, borderClass, textClass, textMutedClass } = classes;
+  const { firmenname, email, strasse, hausnummer, plz, ort, telefonnummer, ansprechpartner } =
+    onboardingCustomerData;
+  const { internet, users, hardware, mail, software, backup, sonstiges } = infrastructureData;
 
-    const appsText = software?.verwendete_applikationen_text || '';
-    const appsList = Array.isArray(software?.verwendete_applikationen)
-      ? software.verwendete_applikationen
-      : [];
-    const verwendeteHardware = Array.isArray(hardware?.verwendete_hardware)
-      ? hardware.verwendete_hardware
-      : [];
+  const yesNo = (v) => (v ? 'Ja' : 'Nein');
+  const dash = (v) => (v !== undefined && v !== null && String(v).trim() !== '' ? String(v) : '—');
 
-    return (
-      <div className="space-y-6">
-        <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
-          <h3 className={`text-lg font-medium ${textClass} mb-4`}>Zusammenfassung</h3>
+  const appsText = software?.verwendete_applikationen_text || '';
+  const appsList = Array.isArray(software?.verwendete_applikationen) ? software.verwendete_applikationen : [];
+  const verwendeteHardware = Array.isArray(hardware?.verwendete_hardware) ? hardware.verwendete_hardware : [];
 
-          {/* Kunde */}
-          <div className="space-y-2 mb-6">
-            <h4 className={`font-semibold ${textClass}`}>Kunde</h4>
-            <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
-              {[
-                { label: 'Firmenname', value: firmenname },
-                { label: 'E-Mail', value: email },
-                { label: 'Straße / Nr.', value: `${dash(strasse)} ${dash(hausnummer)}` },
-                { label: 'PLZ / Ort', value: `${dash(plz)} ${dash(ort)}` },
-                { label: 'Telefon', value: telefonnummer },
-              ].map((item) => (
-                <div key={item.label}>
-                  <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
-                  <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
-                </div>
-              ))}
-            </dl>
+  return (
+    <div className="space-y-6">
+      <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
+        <h3 className={`text-lg font-medium ${textClass} mb-4`}>Zusammenfassung</h3>
 
-            <h5 className={`font-medium ${textClass} mt-4`}>Ansprechpartner</h5>
-            <dl className="grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-2">
-              {[
-                { label: 'Vorname', value: ansprechpartner?.vorname },
-                { label: 'Nachname', value: ansprechpartner?.name },
-                { label: 'Position', value: ansprechpartner?.position },
-              ].map((item) => (
-                <div key={item.label}>
-                  <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
-                  <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
+        {/* Kunde */}
+        <div className="space-y-2 mb-6">
+          <h4 className={`font-semibold ${textClass}`}>Kunde</h4>
+          <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+            {[
+              { label: 'Firmenname', value: firmenname },
+              { label: 'E-Mail', value: email },
+              { label: 'Straße / Nr.', value: `${dash(strasse)} ${dash(hausnummer)}` },
+              { label: 'PLZ / Ort', value: `${dash(plz)} ${dash(ort)}` },
+              { label: 'Telefon', value: telefonnummer },
+            ].map((item) => (
+              <div key={item.label}>
+                <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
+                <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
+              </div>
+            ))}
+          </dl>
 
-          {/* Internet & Firewall */}
-          <div className="space-y-2 mb-6">
-            <h4 className={`font-semibold ${textClass}`}>Internet &amp; Firewall</h4>
-            <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
-              {[
-                { label: 'Internetzugang', value: internet?.zugang },
-                { label: 'Firewall-Modell', value: internet?.firewall_modell },
-                { label: 'Feste IP', value: yesNo(internet?.feste_ip) },
-                ...(internet?.feste_ip ? [{ label: 'IP-Adresse', value: internet?.ip_adresse }] : []),
-                { label: 'VPN erforderlich', value: yesNo(internet?.vpn_erforderlich) },
-                { label: 'VPN-User (Anzahl)', value: internet?.vpn_user_anzahl },
-              ].map((item) => (
-                <div key={item.label}>
-                  <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
-                  <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
+          <h5 className={`font-medium ${textClass} mt-4`}>Ansprechpartner</h5>
+          <dl className="grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-2">
+            {[
+              { label: 'Vorname', value: ansprechpartner?.vorname },
+              { label: 'Nachname', value: ansprechpartner?.name },
+              { label: 'Position', value: ansprechpartner?.position },
+            ].map((item) => (
+              <div key={item.label}>
+                <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
+                <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
 
-          {/* Benutzer */}
-          <div className="space-y-2 mb-6">
-            <h4 className={`font-semibold ${textClass}`}>Benutzer</h4>
-            <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
-              {[
-                { label: 'Anzahl User im Netz', value: users?.netz_user_anzahl },
-                { label: 'Anzahl Mail-User', value: users?.mail_user_anzahl },
-              ].map((item) => (
-                <div key={item.label}>
-                  <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
-                  <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
+        {/* Internet & Firewall */}
+        <div className="space-y-2 mb-6">
+          <h4 className={`font-semibold ${textClass}`}>Internet &amp; Firewall</h4>
+          <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+            {[
+              { label: 'Internetzugang', value: internet?.zugang },
+              { label: 'Firewall-Modell', value: internet?.firewall_modell },
+              { label: 'Feste IP', value: yesNo(internet?.feste_ip) },
+              ...(internet?.feste_ip ? [{ label: 'IP-Adresse', value: internet?.ip_adresse }] : []),
+              { label: 'VPN erforderlich', value: yesNo(internet?.vpn_erforderlich) },
+              { label: 'VPN-User (Anzahl)', value: internet?.vpn_user_anzahl },
+            ].map((item) => (
+              <div key={item.label}>
+                <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
+                <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
 
-          {/* Hardware */}
-          <div className="space-y-2 mb-6">
-            <h4 className={`font-semibold ${textClass}`}>Hardware</h4>
-            <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
-              {[
-                { label: 'RAID-Level', value: hardware?.raid_level },
-                { label: 'USV vorhanden', value: yesNo(hardware?.usv_vorhanden) },
-                { label: 'USV-Modell', value: hardware?.usv_modell },
-              ].map((item) => (
-                <div key={item.label}>
-                  <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
-                  <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
-                </div>
-              ))}
-            </dl>
+        {/* Benutzer */}
+        <div className="space-y-2 mb-6">
+          <h4 className={`font-semibold ${textClass}`}>Benutzer</h4>
+          <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+            {[
+              { label: 'Anzahl User im Netz', value: users?.netz_user_anzahl },
+              { label: 'Anzahl Mail-User', value: users?.mail_user_anzahl },
+            ].map((item) => (
+              <div key={item.label}>
+                <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
+                <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
 
-            <div className="mt-2">
-              <dt className={`text-sm ${textMutedClass} mb-1`}>Verwendete Hardware</dt>
-              {verwendeteHardware.length > 0 ? (
-                <ul className="list-disc list-inside text-sm space-y-1">
-                  {verwendeteHardware.map((h, i) => (
-                    <li key={i} className={textClass}>{h}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className={`text-sm ${textMutedClass}`}>—</p>
-              )}
-            </div>
-          </div>
+        {/* Hardware */}
+        <div className="space-y-2 mb-6">
+          <h4 className={`font-semibold ${textClass}`}>Hardware</h4>
+          <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+            {[
+              { label: 'RAID-Level', value: hardware?.raid_level },
+              { label: 'USV vorhanden', value: yesNo(hardware?.usv_vorhanden) },
+              { label: 'USV-Modell', value: hardware?.usv_modell },
+            ].map((item) => (
+              <div key={item.label}>
+                <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
+                <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
+              </div>
+            ))}
+          </dl>
 
-          {/* Mail */}
-          <div className="space-y-2 mb-6">
-            <h4 className={`font-semibold ${textClass}`}>Mail</h4>
-            <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
-              {[
-                { label: 'Mail-Speicherort', value: mail?.mail_speicherort },
-                { label: 'Mail-Server Volumen', value: mail?.mail_server_volumen },
-                { label: 'POP3-Connector', value: yesNo(mail?.pop3_connector) },
-                { label: 'Sonstige Mailadressen', value: mail?.sonstige_mailadressen },
-                { label: 'Mobiler Zugriff', value: yesNo(mail?.mobiler_zugriff) },
-                { label: 'Zertifikat erforderlich', value: yesNo(mail?.zertifikat_erforderlich) },
-              ].map((item) => (
-                <div key={item.label}>
-                  <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
-                  <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-
-          {/* Software */}
-          <div className="space-y-2 mb-6">
-            <h4 className={`font-semibold ${textClass}`}>Software</h4>
-            <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
-              {[
-                { label: 'Virenschutz', value: software?.virenschutz },
-                { label: 'Schnittstellen', value: software?.schnittstellen },
-                { label: 'Wartungsvertrag', value: yesNo(software?.wartungsvertrag) },
-                { label: 'Migration Support', value: yesNo(software?.migration_support) },
-              ].map((item) => (
-                <div key={item.label}>
-                  <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
-                  <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
-                </div>
-              ))}
-            </dl>
-
-            <div className="mt-2">
-              <dt className={`text-sm ${textMutedClass} mb-1`}>Verwendete Applikationen (Text)</dt>
-              <dd className={`text-sm ${textClass} whitespace-pre-line`}>{appsText.trim() ? appsText : '—'}</dd>
-            </div>
-
-            <div className="mt-2">
-              <dt className={`text-sm ${textMutedClass} mb-1`}>Verwendete Applikationen (Liste)</dt>
-              {appsList.length > 0 ? (
-                <ul className="list-disc list-inside text-sm space-y-1">
-                  {appsList.map((app, i) => (
-                    <li key={i} className={textClass}>{app}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className={`text-sm ${textMutedClass}`}>—</p>
-              )}
-            </div>
-          </div>
-
-          {/* Backup */}
-          <div className="space-y-2 mb-6">
-            <h4 className={`font-semibold ${textClass}`}>Backup</h4>
-            <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
-              {[
-                { label: 'Strategie', value: backup?.strategie },
-                { label: 'NAS vorhanden', value: yesNo(backup?.nas_vorhanden) },
-                { label: 'Externe HDDs', value: backup?.externe_hdds },
-                { label: 'Doku vorhanden', value: yesNo(backup?.dokumentation_vorhanden) },
-                { label: 'Admin-Passwörter bekannt', value: yesNo(backup?.admin_passwoerter_bekannt) },
-              ].map((item) => (
-                <div key={item.label}>
-                  <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
-                  <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-
-          {/* Sonstiges */}
-          <div className="space-y-2">
-            <h4 className={`font-semibold ${textClass}`}>Sonstiges</h4>
-            <p className={`text-sm ${textClass} whitespace-pre-line`}>{dash(sonstiges?.text)}</p>
-          </div>
-
-          <div className="flex justify-between mt-6">
-            <button
-              onClick={() => setCurrentOnboardingStep(2)}
-              className="px-6 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors"
-            >
-              ← Zurück zur IT-Infrastruktur
-            </button>
-            <button
-              onClick={onFinalSubmit}
-              disabled={loading}
-              className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors"
-            >
-              {loading ? 'Speichern...' : 'Kunde und IT-Infrastruktur speichern'}
-            </button>
+          <div className="mt-2">
+            <dt className={`text-sm ${textMutedClass} mb-1`}>Verwendete Hardware</dt>
+            {verwendeteHardware.length > 0 ? (
+              <ul className="list-disc list-inside text-sm space-y-1">
+                {verwendeteHardware.map((h, i) => (
+                  <li key={i} className={textClass}>{h}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className={`text-sm ${textMutedClass}`}>—</p>
+            )}
           </div>
         </div>
+
+        {/* Mail */}
+<div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
+  <div className="flex items-center mb-4">
+    <Mail className="w-5 h-5 text-orange-500 mr-2" />
+    <h3 className={`text-lg font-medium ${textClass}`}>Mail Server</h3>
+  </div>
+
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    {/* Anbieter */}
+    <div>
+      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+        Mail-Anbieter
+      </label>
+      <select
+        value={infrastructureData.mail.anbieter || ""}
+        onChange={(e) =>
+          setInfrastructureData({
+            ...infrastructureData,
+            mail: { ...infrastructureData.mail, anbieter: e.target.value },
+          })
+        }
+        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+      >
+        <option value="">Bitte auswählen</option>
+        <option value="Exchange">Microsoft Exchange</option>
+        <option value="Office365">Microsoft Office 365</option>
+        <option value="Gmail">Google Workspace (Gmail)</option>
+        <option value="IMAP">IMAP/POP3 Server</option>
+        <option value="Other">Anderer Anbieter</option>
+      </select>
+    </div>
+
+    {/* Anzahl Postfächer */}
+    <div>
+      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+        Anzahl Postfächer
+      </label>
+      <input
+        type="number"
+        value={infrastructureData.mail.anzahl_postfach || ""}
+        onChange={(e) =>
+          setInfrastructureData({
+            ...infrastructureData,
+            mail: { ...infrastructureData.mail, anzahl_postfach: e.target.value },
+          })
+        }
+        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+        placeholder="z.B. 25"
+        min="0"
+      />
+    </div>
+
+    {/* Anzahl Shared Mailboxes */}
+    <div>
+      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+        Anzahl Shared Mailboxes
+      </label>
+      <input
+        type="number"
+        value={infrastructureData.mail.anzahl_shared || ""}
+        onChange={(e) =>
+          setInfrastructureData({
+            ...infrastructureData,
+            mail: { ...infrastructureData.mail, anzahl_shared: e.target.value },
+          })
+        }
+        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+        placeholder="z.B. 5"
+        min="0"
+      />
+    </div>
+
+    {/* Gesamt Speicher */}
+    <div>
+      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+        Gesamt Speicher (GB)
+      </label>
+      <input
+        type="number"
+        value={infrastructureData.mail.gesamt_speicher || ""}
+        onChange={(e) =>
+          setInfrastructureData({
+            ...infrastructureData,
+            mail: { ...infrastructureData.mail, gesamt_speicher: e.target.value },
+          })
+        }
+        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+        placeholder="z.B. 500"
+        min="0"
+        step="0.1"
+      />
+    </div>
+
+    {/* Zusätzliche Mail-Felder (optional) */}
+    <div className="flex items-center">
+      <input
+        type="checkbox"
+        id="pop3_connector"
+        checked={infrastructureData.mail.pop3_connector || false}
+        onChange={(e) =>
+          setInfrastructureData({
+            ...infrastructureData,
+            mail: { ...infrastructureData.mail, pop3_connector: e.target.checked },
+          })
+        }
+        className={`h-4 w-4 text-blue-600 rounded focus:ring-blue-500 ${isDark ? 'border-gray-500' : 'border-gray-300'}`}
+      />
+      <label htmlFor="pop3_connector" className={`ml-2 text-sm ${textSecondaryClass}`}>
+        POP3-Connector vorhanden
+      </label>
+    </div>
+
+    <div className="flex items-center">
+      <input
+        type="checkbox"
+        id="mobiler_zugriff"
+        checked={infrastructureData.mail.mobiler_zugriff || false}
+        onChange={(e) =>
+          setInfrastructureData({
+            ...infrastructureData,
+            mail: { ...infrastructureData.mail, mobiler_zugriff: e.target.checked },
+          })
+        }
+        className={`h-4 w-4 text-blue-600 rounded focus:ring-blue-500 ${isDark ? 'border-gray-500' : 'border-gray-300'}`}
+      />
+      <label htmlFor="mobiler_zugriff" className={`ml-2 text-sm ${textSecondaryClass}`}>
+        Mobiler Zugriff aktiviert
+      </label>
+    </div>
+
+    {/* Informationen */}
+    <div className="md:col-span-2">
+      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+        Informationen & Besonderheiten
+      </label>
+      <textarea
+        value={infrastructureData.mail.informationen || ""}
+        onChange={(e) =>
+          setInfrastructureData({
+            ...infrastructureData,
+            mail: { ...infrastructureData.mail, informationen: e.target.value },
+          })
+        }
+        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+        rows="3"
+        placeholder="Besondere Konfigurationen, Migrationshinweise, etc."
+      />
+    </div>
+  </div>
+</div>
+
+        {/* Software */}
+        <div className="space-y-2 mb-6">
+          <h4 className={`font-semibold ${textClass}`}>Software</h4>
+          <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+            {[
+              { label: 'Virenschutz', value: software?.virenschutz },
+              { label: 'Schnittstellen', value: software?.schnittstellen },
+              { label: 'Wartungsvertrag', value: yesNo(software?.wartungsvertrag) },
+              { label: 'Migration Support', value: yesNo(software?.migration_support) },
+            ].map((item) => (
+              <div key={item.label}>
+                <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
+                <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
+              </div>
+            ))}
+          </dl>
+
+          <div className="mt-2">
+            <dt className={`text-sm ${textMutedClass} mb-1`}>Verwendete Applikationen (Text)</dt>
+            <dd className={`text-sm ${textClass} whitespace-pre-line`}>{appsText.trim() ? appsText : '—'}</dd>
+          </div>
+
+          <div className="mt-2">
+            <dt className={`text-sm ${textMutedClass} mb-1`}>Verwendete Applikationen (Liste)</dt>
+            {appsList.length > 0 ? (
+              <ul className="list-disc list-inside text-sm space-y-1">
+                {appsList.map((app, i) => (
+                  <li key={i} className={textClass}>{app}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className={`text-sm ${textMutedClass}`}>—</p>
+            )}
+          </div>
+        </div>
+
+        {/* Sonstiges */}
+        <div className="space-y-2">
+          <h4 className={`font-semibold ${textClass}`}>Sonstiges</h4>
+          <p className={`text-sm ${textClass} whitespace-pre-line`}>{dash(sonstiges?.text)}</p>
+        </div>
+
+        <div className="flex justify-between mt-6">
+          <button
+            onClick={onBack}
+            className="px-6 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors"
+          >
+            ← Zurück zur IT-Infrastruktur
+          </button>
+          <button
+            onClick={onFinalSubmit}
+            disabled={loading}
+            className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors"
+          >
+            {loading ? 'Speichern...' : 'Kunde und IT-Infrastruktur speichern'}
+          </button>
+        </div>
       </div>
-    );
+    </div>
+  );
+}
+
+/* ---------------------- OnboardingSection (export) ---------------------- */
+export default function OnboardingSection({
+  currentOnboardingStep,
+  setCurrentOnboardingStep,
+  onboardingCustomerData,
+  setOnboardingCustomerData,
+  infrastructureData,
+  setInfrastructureData,
+  loading,
+  onFinalSubmit,
+  isDark, // Dark Mode Status als Prop
+}) {
+  const onboardingSteps = [
+    { id: 1, title: 'Kundendaten', icon: Building, description: 'Firmendaten und Kontakt' },
+    { id: 2, title: 'IT-Infrastruktur', icon: Network, description: 'Technische Dokumentation' },
+    { id: 3, title: 'Bestätigung', icon: CheckCircle, description: 'Daten prüfen und speichern' },
+  ];
+
+  // Dark Mode Klassen
+  const classes = {
+    bgClass: isDark ? 'bg-gray-800' : 'bg-white',
+    borderClass: isDark ? 'border-gray-700' : 'border-gray-200',
+    textClass: isDark ? 'text-gray-100' : 'text-gray-900',
+    textSecondaryClass: isDark ? 'text-gray-300' : 'text-gray-700',
+    textMutedClass: isDark ? 'text-gray-400' : 'text-gray-500',
+    inputClass: isDark
+      ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500'
+      : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:ring-blue-500 focus:border-blue-500',
   };
+
+  const handleOnboardingCustomerSubmit = () => {
+    if (!onboardingCustomerData.firmenname || !onboardingCustomerData.email) {
+      alert('Bitte füllen Sie mindestens Firmenname und E-Mail aus');
+      return;
+    }
+    setCurrentOnboardingStep(2);
+  };
+  const handleInfrastructureSubmit = () => setCurrentOnboardingStep(3);
 
   return (
     <div className="max-w-6xl">
@@ -795,7 +1253,7 @@ export default function OnboardingSection({
                 className={`flex items-center justify-center w-10 h-10 rounded-full border-2 ${
                   currentOnboardingStep >= step.id
                     ? 'bg-blue-600 border-blue-600 text-white'
-                    : `${isDark ? 'bg-gray-700' : 'bg-white'} ${borderClass} ${textMutedClass}`
+                    : `${isDark ? 'bg-gray-700' : 'bg-white'} ${classes.borderClass} ${classes.textMutedClass}`
                 }`}
               >
                 {currentOnboardingStep > step.id ? (
@@ -807,15 +1265,15 @@ export default function OnboardingSection({
               <div className="ml-3">
                 <p
                   className={`text-sm font-medium ${
-                    currentOnboardingStep >= step.id ? 'text-blue-600' : textMutedClass
+                    currentOnboardingStep >= step.id ? 'text-blue-600' : classes.textMutedClass
                   }`}
                 >
                   {step.title}
                 </p>
-                <p className={`text-xs ${textMutedClass}`}>{step.description}</p>
+                <p className={`text-xs ${classes.textMutedClass}`}>{step.description}</p>
               </div>
               {step.id < onboardingSteps.length && (
-                <ChevronRight className={`w-5 h-5 ${textMutedClass} mx-4`} />
+                <ChevronRight className={`w-5 h-5 ${classes.textMutedClass} mx-4`} />
               )}
             </div>
           ))}
@@ -823,9 +1281,34 @@ export default function OnboardingSection({
       </div>
 
       {/* Step Content */}
-      {currentOnboardingStep === 1 && <Step1 />}
-      {currentOnboardingStep === 2 && <Step2 />}
-      {currentOnboardingStep === 3 && <Step3 />}
+      {currentOnboardingStep === 1 && (
+        <Step1
+          classes={classes}
+          onboardingCustomerData={onboardingCustomerData}
+          setOnboardingCustomerData={setOnboardingCustomerData}
+          onNext={handleOnboardingCustomerSubmit}
+        />
+      )}
+      {currentOnboardingStep === 2 && (
+        <Step2
+          classes={classes}
+          isDark={isDark}
+          infrastructureData={infrastructureData}
+          setInfrastructureData={setInfrastructureData}
+          onNext={handleInfrastructureSubmit}
+          onBack={() => setCurrentOnboardingStep(1)}
+        />
+      )}
+      {currentOnboardingStep === 3 && (
+        <Step3
+          classes={classes}
+          onboardingCustomerData={onboardingCustomerData}
+          infrastructureData={infrastructureData}
+          loading={loading}
+          onBack={() => setCurrentOnboardingStep(2)}
+          onFinalSubmit={onFinalSubmit}
+        />
+      )}
     </div>
   );
 }
