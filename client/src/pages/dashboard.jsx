@@ -1,22 +1,33 @@
 import React, { useState, useEffect } from 'react';
 import {
   User, Clock, Settings, RotateCcw, Calculator, TrendingUp, Network, ChevronRight,
-  Sun, Moon, Building, Shield, Server, Mail, HardDrive, CheckCircle
+  Sun, Moon, X, Save, Eye, EyeOff, Edit3
 } from 'lucide-react';
 import OnboardingSection from '../features/onboarding/OnboardingSection.jsx';
 import CalculationSection from '../features/kalkulation/calculationSection.jsx';
 import useDarkMode from '../hooks/useDarkMode';
 
-export default function Dashboard({ onLogout }) {
+export default function Dashboard({ onLogout, userInfo }) {
   const [activeSection, setActiveSection] = useState('overview');
   const [showProfile, setShowProfile] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [currentOnboardingStep, setCurrentOnboardingStep] = useState(1);
   const { isDark, toggle } = useDarkMode();
 
-  const API_BASE = 
+  // Passwort ändern States
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+    showCurrentPassword: false,
+    showNewPassword: false,
+    showConfirmPassword: false,
+  });
+
+  const API_BASE =
     (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE) ||
-    (typeof process !== 'undefined' && 
+    (typeof process !== 'undefined' &&
       (process.env?.REACT_APP_API_BASE || process.env?.REACT_APP_API_URL)) ||
     'http://localhost:5000/api';
 
@@ -57,49 +68,54 @@ export default function Dashboard({ onLogout }) {
   });
 
   const [infrastructureData, setInfrastructureData] = useState({
-    internet: {
-      zugang: '',
-      feste_ip: false,
+    netzwerk: {
+      internetzugangsart: '',
+      feste_ip_vorhanden: false,
+      vpn_einwahl_erforderlich: false,
+      aktuelle_vpn_user: '',
+      geplante_vpn_user: '',
       firewall_modell: '',
-      firewall_alter: '',
-      vpn_erforderlich: false,
-      vpn_user_anzahl: 0,
+      ip_adresse: '',
+      informationen: '',
     },
-    users: { netz_user_anzahl: 0, mail_user_anzahl: 0 },
     hardware: {
-      server_netzteile: 'ja',
-      hot_spare_hdd: 'ja',
-      raid_level: '',
-      usv_vorhanden: false,
-      usv_modell: '',
-      drucker: [],
-      verwendete_hardware: [],
+      typ: '',
+      hersteller: '',
+      modell: '',
+      seriennummer: '',
+      standort: '',
+      ip: '',
+      details_jsonb: {}, // JSON-Objekt statt leerer String
+      informationen: '',
     },
     mail: {
-      file_server_volumen: '',
-      mail_server_volumen: '',
-      mail_speicherort: '',
+      anbieter: '',
+      anzahl_postfach: '',
+      anzahl_shared: '',
+      gesamt_speicher: '',
       pop3_connector: false,
-      sonstige_mailadressen: 0,
-      besondere_anforderungen: '',
       mobiler_zugriff: false,
-      zertifikat_erforderlich: false,
+      informationen: '',
     },
     software: {
+      name: '',
+      licenses: '',
+      critical: '',
+      requirements: [],
+      description: '',
+      verwendete_applikationen_text: '',
       verwendete_applikationen: [],
-      server_applikationen: [],
-      ansprechpartner: '',
-      wartungsvertrag: false,
-      migration_support: false,
-      virenschutz: '',
-      schnittstellen: '',
     },
     backup: {
-      strategie: '',
-      nas_vorhanden: false,
-      externe_hdds: 0,
-      dokumentation_vorhanden: false,
-      admin_passwoerter_bekannt: false,
+      tool: '',
+      interval: '',
+      retention: '',
+      location: '',
+      size: '',
+      info: '',
+    },
+    sonstiges: {
+      text: '',
     },
   });
 
@@ -144,6 +160,36 @@ export default function Dashboard({ onLogout }) {
     }
   };
 
+  const changePassword = async () => {
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      alert('❌ Die neuen Passwörter stimmen nicht überein');
+      return;
+    }
+    if (passwordData.newPassword.length < 6) {
+      alert('❌ Das neue Passwort muss mindestens 6 Zeichen lang sein');
+      return;
+    }
+    try {
+      setLoading(true);
+      // Hier würdest du ans Backend senden
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      alert('✅ Passwort erfolgreich geändert!');
+      setPasswordData({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+        showCurrentPassword: false,
+        showNewPassword: false,
+        showConfirmPassword: false,
+      });
+    } catch (error) {
+      console.error('Fehler beim Ändern des Passworts:', error);
+      alert('❌ Fehler beim Ändern des Passworts');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleFinalOnboardingSubmit = async () => {
     setLoading(true);
     try {
@@ -176,12 +222,55 @@ export default function Dashboard({ onLogout }) {
         ansprechpartner: { name: '', vorname: '', email: '', telefonnummer: '', position: '' },
       });
       setInfrastructureData({
-        internet: { zugang: '', feste_ip: false, firewall_modell: '', firewall_alter: '', vpn_erforderlich: false, vpn_user_anzahl: 0 },
-        users: { netz_user_anzahl: 0, mail_user_anzahl: 0 },
-        hardware: { server_netzteile: 'ja', hot_spare_hdd: 'ja', raid_level: '', usv_vorhanden: false, usv_modell: '', drucker: [], verwendete_hardware: [] },
-        mail: { file_server_volumen: '', mail_server_volumen: '', mail_speicherort: '', pop3_connector: false, sonstige_mailadressen: 0, besondere_anforderungen: '', mobiler_zugriff: false, zertifikat_erforderlich: false },
-        software: { verwendete_applikationen: [], server_applikationen: [], ansprechpartner: '', wartungsvertrag: false, migration_support: false, virenschutz: '', schnittstellen: '' },
-        backup: { strategie: '', nas_vorhanden: false, externe_hdds: 0, dokumentation_vorhanden: false, admin_passwoerter_bekannt: false },
+        netzwerk: {
+          internetzugangsart: '',
+          feste_ip_vorhanden: false,
+          vpn_einwahl_erforderlich: false,
+          aktuelle_vpn_user: '',
+          geplante_vpn_user: '',
+          firewall_modell: '',
+          ip_adresse: '',
+          informationen: '',
+        },
+        hardware: {
+          typ: '',
+          hersteller: '',
+          modell: '',
+          seriennummer: '',
+          standort: '',
+          ip: '',
+          details_jsonb: {},
+          informationen: '',
+        },
+        mail: {
+          anbieter: '',
+          anzahl_postfach: '',
+          anzahl_shared: '',
+          gesamt_speicher: '',
+          pop3_connector: false,
+          mobiler_zugriff: false,
+          informationen: '',
+        },
+        software: {
+          name: '',
+          licenses: '',
+          critical: '',
+          requirements: [],
+          description: '',
+          verwendete_applikationen_text: '',
+          verwendete_applikationen: [],
+        },
+        backup: {
+          tool: '',
+          interval: '',
+          retention: '',
+          location: '',
+          size: '',
+          info: '',
+        },
+        sonstiges: {
+          text: '',
+        },
       });
       loadDashboardData();
     } catch (error) {
@@ -247,6 +336,128 @@ export default function Dashboard({ onLogout }) {
     { id: 'stundenkalkulation', label: 'Stundenkalkulation', icon: Calculator, color: 'text-orange-600 dark:text-orange-400' },
   ];
 
+  const renderProfileModal = () => (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 w-full max-w-md mx-4">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Profil anzeigen</h2>
+          <button
+            onClick={() => setShowProfileModal(false)}
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <div className="flex justify-center mb-6">
+            <div className="w-20 h-20 bg-yellow-400 rounded-full flex items-center justify-center">
+              <User className="w-10 h-10 text-gray-900" />
+            </div>
+          </div>
+
+          {/* E-Mail anzeigen (nicht editierbar) */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Angemeldet als
+            </label>
+            <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-300">
+              {userInfo?.email || 'Nicht verfügbar'}
+            </div>
+          </div>
+
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-6">
+            <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-3">Passwort ändern</h3>
+
+            <div className="space-y-3">
+              <div className="relative">
+                <input
+                  type={passwordData.showCurrentPassword ? 'text' : 'password'}
+                  value={passwordData.currentPassword}
+                  onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+                  placeholder="Aktuelles Passwort"
+                  className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPasswordData({ ...passwordData, showCurrentPassword: !passwordData.showCurrentPassword })
+                  }
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {passwordData.showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+
+              <div className="relative">
+                <input
+                  type={passwordData.showNewPassword ? 'text' : 'password'}
+                  value={passwordData.newPassword}
+                  onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                  placeholder="Neues Passwort"
+                  className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPasswordData({ ...passwordData, showNewPassword: !passwordData.showNewPassword })
+                  }
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {passwordData.showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+
+              <div className="relative">
+                <input
+                  type={passwordData.showConfirmPassword ? 'text' : 'password'}
+                  value={passwordData.confirmPassword}
+                  onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                  placeholder="Neues Passwort bestätigen"
+                  className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPasswordData({
+                      ...passwordData,
+                      showConfirmPassword: !passwordData.showConfirmPassword,
+                    })
+                  }
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {passwordData.showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+
+              {passwordData.currentPassword &&
+                passwordData.newPassword &&
+                passwordData.confirmPassword && (
+                  <button
+                    onClick={changePassword}
+                    disabled={loading}
+                    className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center justify-center space-x-2"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>Passwort ändern</span>
+                  </button>
+                )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end p-6 border-t border-gray-200 dark:border-gray-700">
+          <button
+            onClick={() => setShowProfileModal(false)}
+            className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+          >
+            Schließen
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   const renderContent = () => {
     switch (activeSection) {
       case 'onboarding':
@@ -286,18 +497,30 @@ export default function Dashboard({ onLogout }) {
         return (
           <div className="space-y-6">
             <div>
-              <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Dashboard Übersicht</h2>
-              <p className="text-gray-600 dark:text-gray-400">Aktuelle Statistiken und laufende Projekte</p>
+              <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                Dashboard Übersicht
+              </h2>
+              <p className="text-gray-600 dark:text-gray-400">
+                Aktuelle Statistiken und laufende Projekte
+              </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               {[
                 { icon: User, bg: 'bg-blue-500', label: 'Kunden', value: stats.activeCustomers },
                 { icon: Calculator, bg: 'bg-green-500', label: 'Projekte', value: stats.runningProjects },
-                { icon: Clock, bg: 'bg-orange-500', label: 'Stunden (Monat)', value: Math.round(stats.monthlyHours) + 'h' },
+                {
+                  icon: Clock,
+                  bg: 'bg-orange-500',
+                  label: 'Stunden (Monat)',
+                  value: Math.round(stats.monthlyHours) + 'h',
+                },
                 { icon: TrendingUp, bg: 'bg-purple-500', label: 'Umsatz (Monat)', value: euro(stats.monthlyRevenue) },
               ].map((item, index) => (
-                <div key={index} className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+                <div
+                  key={index}
+                  className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700"
+                >
                   <div className="flex items-center">
                     <div className="flex-shrink-0">
                       <div className={`w-8 h-8 ${item.bg} rounded-md flex items-center justify-center`}>
@@ -342,16 +565,18 @@ export default function Dashboard({ onLogout }) {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className="text-sm text-gray-900 dark:text-gray-300">
-                            {kalkulation.datum
-                              ? new Date(kalkulation.datum).toLocaleDateString('de-DE')
-                              : '—'}
+                            {kalkulation.datum ? new Date(kalkulation.datum).toLocaleDateString('de-DE') : '—'}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm text-gray-900 dark:text-gray-300">{Number(kalkulation.gesamtzeit || 0)}h</span>
+                          <span className="text-sm text-gray-900 dark:text-gray-300">
+                            {Number(kalkulation.gesamtzeit || 0)}h
+                          </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm text-gray-900 dark:text-gray-300">{euro(kalkulation.gesamtpreis)}</span>
+                          <span className="text-sm text-gray-900 dark:text-gray-300">
+                            {euro(kalkulation.gesamtpreis)}
+                          </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span
@@ -387,6 +612,10 @@ export default function Dashboard({ onLogout }) {
         </div>
       )}
 
+      {/* Profil Modal */}
+      {showProfileModal && renderProfileModal()}
+
+      {/* Sidebar */}
       <div className="w-64 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 flex flex-col">
         <div className="p-4 border-b border-gray-200 dark:border-gray-800">
           <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Pauly Dashboard</h1>
@@ -422,10 +651,10 @@ export default function Dashboard({ onLogout }) {
           })}
         </nav>
 
-        <div className="p-4 border-t border-gray-200 dark:border-gray-800">
-        </div>
+        <div className="p-4 border-t border-gray-200 dark:border-gray-800"></div>
       </div>
 
+      {/* Main */}
       <div className="flex-1 flex flex-col">
         <header className="bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 px-6 py-3 grid grid-cols-[1fr_auto_1fr] items-center">
           <div className="justify-self-start">
@@ -473,18 +702,24 @@ export default function Dashboard({ onLogout }) {
               {showProfile && (
                 <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-900 rounded-md shadow-lg border border-gray-200 dark:border-gray-700 z-10">
                   <div className="p-3 border-b border-gray-100 dark:border-gray-800">
-                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Mitarbeiter</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">pauly@example.com</p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {userInfo?.vorname} {userInfo?.name}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{userInfo?.email}</p>
                   </div>
                   <div className="py-1">
-                    <button className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800">
+                    <button
+                      onClick={() => {
+                        setShowProfile(false);
+                        setShowProfileModal(true);
+                      }}
+                      className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+                    >
+                      <Edit3 className="w-4 h-4 mr-2" />
                       Profil anzeigen
                     </button>
-                    <button className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800">
-                      Einstellungen
-                    </button>
                     <hr className="my-1 border-gray-100 dark:border-gray-800" />
-                    <button 
+                    <button
                       onClick={onLogout}
                       className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
                     >

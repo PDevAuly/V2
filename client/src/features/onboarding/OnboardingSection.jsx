@@ -21,7 +21,7 @@ function Step1({
   setOnboardingCustomerData,
   onNext,
 }) {
-  const { bgClass, borderClass, textClass, textSecondaryClass, textMutedClass, inputClass } = classes;
+  const { bgClass, borderClass, textClass, textSecondaryClass, inputClass } = classes;
 
   return (
     <div className="space-y-6">
@@ -43,7 +43,7 @@ function Step1({
               <input
                 type={field.type}
                 required={field.required}
-                value={onboardingCustomerData[field.key]}
+                value={onboardingCustomerData[field.key] || ''}
                 onChange={(e) =>
                   setOnboardingCustomerData({ ...onboardingCustomerData, [field.key]: e.target.value })
                 }
@@ -66,7 +66,7 @@ function Step1({
                 <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>{field.label}</label>
                 <input
                   type="text"
-                  value={onboardingCustomerData.ansprechpartner[field.key]}
+                  value={onboardingCustomerData.ansprechpartner?.[field.key] || ''}
                   onChange={(e) =>
                     setOnboardingCustomerData({
                       ...onboardingCustomerData,
@@ -112,7 +112,6 @@ function Step2({
   const [selectedRequirementType, setSelectedRequirementType] = useState('');
   const [requirementDetail, setRequirementDetail] = useState('');
 
-  // Funktion zum Hinzufügen einer Anforderung
   const addRequirement = () => {
     if (selectedRequirementType && requirementDetail) {
       setInfrastructureData({
@@ -121,10 +120,7 @@ function Step2({
           ...infrastructureData.software,
           requirements: [
             ...(infrastructureData.software?.requirements || []),
-            {
-              type: selectedRequirementType,
-              detail: requirementDetail
-            }
+            { type: selectedRequirementType, detail: requirementDetail }
           ]
         }
       });
@@ -133,16 +129,12 @@ function Step2({
     }
   };
 
-  // Funktion zum Entfernen einer Anforderung
   const removeRequirement = (index) => {
     const updatedRequirements = [...(infrastructureData.software?.requirements || [])];
     updatedRequirements.splice(index, 1);
     setInfrastructureData({
       ...infrastructureData,
-      software: {
-        ...infrastructureData.software,
-        requirements: updatedRequirements
-      }
+      software: { ...infrastructureData.software, requirements: updatedRequirements }
     });
   };
 
@@ -156,361 +148,625 @@ function Step2({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {[
-            { label: 'Internetzugang', key: 'zugang', placeholder: 'z.B. DSL 100/40 Mbit, Glasfaser...' },
-            { label: 'Firewall Modell', key: 'firewall_modell', placeholder: 'z.B. Sophos XG 125' },
-          ].map((field) => (
-            <div key={field.key}>
-              <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>{field.label}</label>
-              <input
-                type="text"
-                value={infrastructureData.internet[field.key]}
-                onChange={(e) =>
-                  setInfrastructureData({
-                    ...infrastructureData,
-                    internet: { ...infrastructureData.internet, [field.key]: e.target.value },
-                  })
-                }
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-                placeholder={field.placeholder}
-              />
-            </div>
-          ))}
+          {/* Internetzugangsart */}
+          <div>
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+              Internetzugangsart
+            </label>
+            <select
+              value={infrastructureData.netzwerk?.internetzugangsart || ''}
+              onChange={(e) =>
+                setInfrastructureData({
+                  ...infrastructureData,
+                  netzwerk: { ...infrastructureData.netzwerk, internetzugangsart: e.target.value },
+                })
+              }
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+            >
+              <option value="">Bitte auswählen</option>
+              <option value="DSL">DSL</option>
+              <option value="VDSL">VDSL</option>
+              <option value="Glasfaser">Glasfaser</option>
+              <option value="Kabel">Kabel Internet</option>
+              <option value="LTE">LTE/5G</option>
+              <option value="Standleitung">Standleitung</option>
+              <option value="Satellit">Satellit</option>
+              <option value="Sonstiges">Sonstiges</option>
+            </select>
+          </div>
 
-          {/* Feste IP + optionales IP-Feld */}
+          {/* Firewall Modell */}
+          <div>
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+              Firewall Modell
+            </label>
+            <input
+              type="text"
+              value={infrastructureData.netzwerk?.firewall_modell || ''}
+              onChange={(e) =>
+                setInfrastructureData({
+                  ...infrastructureData,
+                  netzwerk: { ...infrastructureData.netzwerk, firewall_modell: e.target.value },
+                })
+              }
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+              placeholder="z.B. Sophos XG 125"
+            />
+          </div>
+
+          {/* Feste IP vorhanden */}
           <div className="col-span-2">
             <div className="flex items-center">
               <input
                 type="checkbox"
-                id="feste_ip"
-                checked={infrastructureData.internet.feste_ip}
+                id="feste_ip_vorhanden"
+                checked={infrastructureData.netzwerk?.feste_ip_vorhanden || false}
                 onChange={(e) =>
                   setInfrastructureData({
                     ...infrastructureData,
-                    internet: {
-                      ...infrastructureData.internet,
-                      feste_ip: e.target.checked,
-                      ip_adresse: e.target.checked ? infrastructureData.internet.ip_adresse || '' : '',
+                    netzwerk: {
+                      ...infrastructureData.netzwerk,
+                      feste_ip_vorhanden: e.target.checked,
+                      ip_adresse: e.target.checked ? infrastructureData.netzwerk?.ip_adresse || '' : '',
                     },
                   })
                 }
                 className={`h-4 w-4 text-blue-600 rounded focus:ring-blue-500 ${isDark ? 'border-gray-500' : 'border-gray-300'}`}
               />
-              <label htmlFor="feste_ip" className={`ml-2 text-sm ${textSecondaryClass}`}>
+              <label htmlFor="feste_ip_vorhanden" className={`ml-2 text-sm ${textSecondaryClass}`}>
                 Feste IP-Adresse vorhanden
               </label>
             </div>
 
-            {infrastructureData.internet.feste_ip && (
-              <div className="mt-3">
-                <label className={`block text-sm font-medium ${textSecondaryClass} mb-1`}>IP-Adresse</label>
-                <input
-                  type="text"
-                  value={infrastructureData.internet.ip_adresse || ''}
-                  onChange={(e) =>
-                    setInfrastructureData({
-                      ...infrastructureData,
-                      internet: {
-                        ...infrastructureData.internet,
-                        ip_adresse: e.target.value,
-                      },
-                    })
-                  }
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-                  placeholder="z.B. 192.168.0.10"
-                />
+            {infrastructureData.netzwerk?.feste_ip_vorhanden && (
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className={`block text-sm font-medium ${textSecondaryClass} mb-1`}>IP-Adresse</label>
+                  <input
+                    type="text"
+                    value={infrastructureData.netzwerk?.ip_adresse || ''}
+                    onChange={(e) =>
+                      setInfrastructureData({
+                        ...infrastructureData,
+                        netzwerk: { ...infrastructureData.netzwerk, ip_adresse: e.target.value },
+                      })
+                    }
+                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+                    placeholder="z.B. 192.168.0.10"
+                  />
+                </div>
               </div>
             )}
           </div>
 
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="vpn_erforderlich"
-              checked={infrastructureData.internet.vpn_erforderlich}
+          {/* VPN Einwahl erforderlich */}
+          <div className="col-span-2">
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="vpn_einwahl_erforderlich"
+                checked={infrastructureData.netzwerk?.vpn_einwahl_erforderlich || false}
+                onChange={(e) =>
+                  setInfrastructureData({
+                    ...infrastructureData,
+                    netzwerk: { ...infrastructureData.netzwerk, vpn_einwahl_erforderlich: e.target.checked },
+                  })
+                }
+                className={`h-4 w-4 text-blue-600 rounded focus:ring-blue-500 ${isDark ? 'border-gray-500' : 'border-gray-300'}`}
+              />
+              <label htmlFor="vpn_einwahl_erforderlich" className={`ml-2 text-sm ${textSecondaryClass}`}>
+                VPN-Einwahl erforderlich
+              </label>
+            </div>
+
+            {infrastructureData.netzwerk?.vpn_einwahl_erforderlich && (
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className={`block text-sm font-medium ${textSecondaryClass} mb-1`}>
+                    Aktuelle VPN User
+                  </label>
+                  <input
+                    type="number"
+                    value={infrastructureData.netzwerk?.aktuelle_vpn_user || ''}
+                    onChange={(e) =>
+                      setInfrastructureData({
+                        ...infrastructureData,
+                        netzwerk: { ...infrastructureData.netzwerk, aktuelle_vpn_user: e.target.value },
+                      })
+                    }
+                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+                    placeholder="z.B. 5"
+                    min="0"
+                  />
+                </div>
+
+                <div>
+                  <label className={`block text-sm font-medium ${textSecondaryClass} mb-1`}>
+                    Geplante VPN User
+                  </label>
+                  <input
+                    type="number"
+                    value={infrastructureData.netzwerk?.geplante_vpn_user || ''}
+                    onChange={(e) =>
+                      setInfrastructureData({
+                        ...infrastructureData,
+                        netzwerk: { ...infrastructureData.netzwerk, geplante_vpn_user: e.target.value },
+                      })
+                    }
+                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+                    placeholder="z.B. 10"
+                    min="0"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Zusätzliche Netzwerk-Informationen */}
+          <div className="md:col-span-2">
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+              Zusätzliche Netzwerk-Informationen
+            </label>
+            <textarea
+              value={infrastructureData.netzwerk?.informationen || ''}
               onChange={(e) =>
                 setInfrastructureData({
                   ...infrastructureData,
-                  internet: {
-                    ...infrastructureData.internet,
-                    vpn_erforderlich: e.target.checked,
-                  },
+                  netzwerk: { ...infrastructureData.netzwerk, informationen: e.target.value },
                 })
               }
-              className={`h-4 w-4 text-blue-600 rounded focus:ring-blue-500 ${isDark ? 'border-gray-500' : 'border-gray-300'}`}
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+              rows="3"
+              placeholder="Bandbreite, Besonderheiten der Netzwerkkonfiguration, etc."
             />
-            <label htmlFor="vpn_erforderlich" className={`ml-2 text-sm ${textSecondaryClass}`}>
-              VPN-Einwahl erforderlich
-            </label>
           </div>
         </div>
       </div>
 
       {/* Hardware */}
       <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
-        <div className="flex items-center mb-4">
-          <Server className="w-5 h-5 text-purple-500 mr-2" />
-          <h3 className={`text-lg font-medium ${textClass}`}>Hardware</h3>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center">
+            <Server className="w-5 h-5 text-purple-500 mr-2" />
+            <h3 className={`text-lg font-medium ${textClass}`}>Hardware</h3>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const hardwareList = infrastructureData.hardware?.hardwareList || [];
+              setInfrastructureData({
+                ...infrastructureData,
+                hardware: {
+                  ...infrastructureData.hardware,
+                  hardwareList: [
+                    ...hardwareList,
+                    {
+                      id: Date.now(),
+                      typ: '',
+                      hersteller: '',
+                      modell: '',
+                      seriennummer: '',
+                      standort: '',
+                      ip: '',
+                      details_jsonb: '',
+                      informationen: ''
+                    }
+                  ]
+                }
+              });
+            }}
+            className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors flex items-center space-x-2"
+          >
+            <Server className="w-4 h-4" />
+            <span>Hardware hinzufügen</span>
+          </button>
         </div>
 
-        <div className="grid grid-cols-1 gap-6">
-          <div>
-            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Hardware hinzufügen</label>
-
-            <div className="flex gap-2 mb-3">
-              <select
-                value=""
-                onChange={(e) => {
-                  if (!e.target.value) return;
-                  const newList = [...(infrastructureData.hardware.verwendete_hardware || [])];
-                  if (!newList.some((hw) => hw.startsWith(e.target.value))) {
-                    newList.push(e.target.value);
-                    setInfrastructureData({
-                      ...infrastructureData,
-                      hardware: { ...infrastructureData.hardware, verwendete_hardware: newList },
-                    });
-                  }
-                  e.target.value = '';
-                }}
-                className={`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-              >
-                <option value="">Hardware-Typ auswählen...</option>
-                <optgroup label="Server & Storage">
-                  <option value="Server">Server</option>
-                  <option value="NAS">NAS</option>
-                  <option value="SAN">SAN</option>
-                  <option value="Backup-Server">Backup-Server</option>
-                  <option value="Virtualisierungs-Host">Virtualisierungs-Host</option>
-                  <option value="RAID 0">RAID 0</option>
-                  <option value="RAID 1">RAID 1</option>
-                  <option value="RAID 5">RAID 5</option>
-                  <option value="RAID 6">RAID 6</option>
-                  <option value="RAID 10">RAID 10</option>
-                </optgroup>
-                <optgroup label="Netzwerk">
-                  <option value="Router">Router</option>
-                  <option value="Firewall">Firewall</option>
-                  <option value="Switch">Switch</option>
-                  <option value="Access Point">WLAN Access Point</option>
-                </optgroup>
-                <optgroup label="Arbeitsplatz">
-                  <option value="Desktop-PC">Desktop-PC</option>
-                  <option value="Notebook">Notebook</option>
-                </optgroup>
-                <optgroup label="Peripherie">
-                  <option value="Drucker">Drucker</option>
-                  <option value="Scanner">Scanner</option>
-                </optgroup>
-                <optgroup label="Strom/USV">
-                  <option value="USV APC Smart-UPS 1500">USV APC Smart-UPS 1500</option>
-                  <option value="Eaton 9PX">Eaton 9PX</option>
-                  <option value="PDU">PDU</option>
-                </optgroup>
-              </select>
-
-              <input
-                type="text"
-                placeholder="Oder Modell eingeben…"
-                onKeyDown={(e) => {
-                  if (e.key !== 'Enter' || !e.target.value.trim()) return;
-                  const v = e.target.value.trim();
-                  const list = [...(infrastructureData.hardware.verwendete_hardware || [])];
-                  list.push(v);
+        {/* Hardware-Liste */}
+        <div className="space-y-6">
+          {(infrastructureData.hardware?.hardwareList || []).length === 0 ? (
+            <div className={`text-center py-8 border-2 border-dashed ${borderClass} rounded-lg`}>
+              <Server className={`w-12 h-12 ${textMutedClass} mx-auto mb-2`} />
+              <p className={`${textMutedClass} mb-4`}>Noch keine Hardware hinzugefügt</p>
+              <button
+                type="button"
+                onClick={() => {
                   setInfrastructureData({
                     ...infrastructureData,
-                    hardware: { ...infrastructureData.hardware, verwendete_hardware: list },
+                    hardware: {
+                      ...infrastructureData.hardware,
+                      hardwareList: [{
+                        id: Date.now(),
+                        typ: '',
+                        hersteller: '',
+                        modell: '',
+                        seriennummer: '',
+                        standort: '',
+                        ip: '',
+                        details_jsonb: '',
+                        informationen: ''
+                      }]
+                    }
                   });
-                  e.target.value = '';
                 }}
-                className={`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-              />
+                className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
+              >
+                Erste Hardware hinzufügen
+              </button>
             </div>
+          ) : (
+            (infrastructureData.hardware?.hardwareList || []).map((hardware, index) => (
+              <div key={hardware.id} className={`${isDark ? 'bg-gray-700' : 'bg-gray-50'} p-4 rounded-lg border ${borderClass}`}>
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className={`text-md font-medium ${textClass}`}>
+                    Hardware #{index + 1} {hardware.typ && `(${hardware.typ})`}
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updatedList = infrastructureData.hardware.hardwareList.filter((_, i) => i !== index);
+                      setInfrastructureData({
+                        ...infrastructureData,
+                        hardware: { ...infrastructureData.hardware, hardwareList: updatedList }
+                      });
+                    }}
+                    className="text-red-500 hover:text-red-700 p-1"
+                    title="Hardware entfernen"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
 
-            {infrastructureData.hardware.verwendete_hardware?.length > 0 && (
-              <div className="mt-3">
-                <p className={`text-sm ${textMutedClass} mb-2`}>Erfasste Hardware:</p>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {infrastructureData.hardware.verwendete_hardware.map((hw, index) => (
-                    <div
-                      key={`${hw}-${index}`}
-                      className={`flex items-center justify-between ${isDark ? 'bg-gray-700' : 'bg-gray-50'} px-3 py-2 rounded-md`}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Typ */}
+                  <div>
+                    <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+                      Hardware-Typ
+                    </label>
+                    <select
+                      value={hardware.typ || ''}
+                      onChange={(e) => {
+                        const updatedList = [...infrastructureData.hardware.hardwareList];
+                        updatedList[index] = { ...hardware, typ: e.target.value };
+                        setInfrastructureData({
+                          ...infrastructureData,
+                          hardware: { ...infrastructureData.hardware, hardwareList: updatedList }
+                        });
+                      }}
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
                     >
-                      <span className={`text-sm ${textClass}`}>{hw}</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const updated = infrastructureData.hardware.verwendete_hardware.filter(
-                            (_, i) => i !== index
-                          );
-                          setInfrastructureData({
-                            ...infrastructureData,
-                            hardware: { ...infrastructureData.hardware, verwendete_hardware: updated },
-                          });
-                        }}
-                        className="text-red-500 hover:text-red-700 text-sm px-2"
-                        title="Entfernen"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
+                      <option value="">Bitte auswählen</option>
+                      <optgroup label="Server & Storage">
+                        <option value="Server">Server</option>
+                        <option value="NAS">NAS</option>
+                        <option value="SAN">SAN</option>
+                        <option value="Backup-Server">Backup-Server</option>
+                        <option value="Virtualisierungs-Host">Virtualisierungs-Host</option>
+                      </optgroup>
+                      <optgroup label="Netzwerk">
+                        <option value="Router">Router</option>
+                        <option value="Firewall">Firewall</option>
+                        <option value="Switch">Switch</option>
+                        <option value="Access Point">WLAN Access Point</option>
+                      </optgroup>
+                      <optgroup label="Arbeitsplatz">
+                        <option value="Desktop-PC">Desktop-PC</option>
+                        <option value="Notebook">Notebook</option>
+                      </optgroup>
+                      <optgroup label="Peripherie">
+                        <option value="Drucker">Drucker</option>
+                        <option value="Scanner">Scanner</option>
+                      </optgroup>
+                      <optgroup label="Strom/USV">
+                        <option value="USV">USV</option>
+                        <option value="PDU">PDU</option>
+                      </optgroup>
+                    </select>
+                  </div>
+
+                  {/* Hersteller */}
+                  <div>
+                    <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+                      Hersteller
+                    </label>
+                    <input
+                      type="text"
+                      value={hardware.hersteller || ''}
+                      onChange={(e) => {
+                        const updatedList = [...infrastructureData.hardware.hardwareList];
+                        updatedList[index] = { ...hardware, hersteller: e.target.value };
+                        setInfrastructureData({
+                          ...infrastructureData,
+                          hardware: { ...infrastructureData.hardware, hardwareList: updatedList }
+                        });
+                      }}
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+                      placeholder="z.B. Dell, HP, Cisco"
+                    />
+                  </div>
+
+                  {/* Modell */}
+                  <div>
+                    <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+                      Modell
+                    </label>
+                    <input
+                      type="text"
+                      value={hardware.modell || ''}
+                      onChange={(e) => {
+                        const updatedList = [...infrastructureData.hardware.hardwareList];
+                        updatedList[index] = { ...hardware, modell: e.target.value };
+                        setInfrastructureData({
+                          ...infrastructureData,
+                          hardware: { ...infrastructureData.hardware, hardwareList: updatedList }
+                        });
+                      }}
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+                      placeholder="z.B. PowerEdge R750, ProLiant DL380"
+                    />
+                  </div>
+
+                  {/* Seriennummer */}
+                  <div>
+                    <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+                      Seriennummer
+                    </label>
+                    <input
+                      type="text"
+                      value={hardware.seriennummer || ''}
+                      onChange={(e) => {
+                        const updatedList = [...infrastructureData.hardware.hardwareList];
+                        updatedList[index] = { ...hardware, seriennummer: e.target.value };
+                        setInfrastructureData({
+                          ...infrastructureData,
+                          hardware: { ...infrastructureData.hardware, hardwareList: updatedList }
+                        });
+                      }}
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+                      placeholder="z.B. ABC123DEF456"
+                    />
+                  </div>
+
+                  {/* Standort */}
+                  <div>
+                    <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+                      Standort
+                    </label>
+                    <input
+                      type="text"
+                      value={hardware.standort || ''}
+                      onChange={(e) => {
+                        const updatedList = [...infrastructureData.hardware.hardwareList];
+                        updatedList[index] = { ...hardware, standort: e.target.value };
+                        setInfrastructureData({
+                          ...infrastructureData,
+                          hardware: { ...infrastructureData.hardware, hardwareList: updatedList }
+                        });
+                      }}
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+                      placeholder="z.B. Serverraum, Büro 1, Keller"
+                    />
+                  </div>
+
+                  {/* IP-Adresse */}
+                  <div>
+                    <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+                      IP-Adresse
+                    </label>
+                    <input
+                      type="text"
+                      value={hardware.ip || ''}
+                      onChange={(e) => {
+                        const updatedList = [...infrastructureData.hardware.hardwareList];
+                        updatedList[index] = { ...hardware, ip: e.target.value };
+                        setInfrastructureData({
+                          ...infrastructureData,
+                          hardware: { ...infrastructureData.hardware, hardwareList: updatedList }
+                        });
+                      }}
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+                      placeholder="z.B. 192.168.1.100"
+                    />
+                  </div>
+
+                  {/* Details (JSONB) */}
+                  <div className="md:col-span-2">
+                    <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+                      Technische Details
+                    </label>
+                    <textarea
+                      value={hardware.details_jsonb || ''}
+                      onChange={(e) => {
+                        const updatedList = [...infrastructureData.hardware.hardwareList];
+                        updatedList[index] = { ...hardware, details_jsonb: e.target.value };
+                        setInfrastructureData({
+                          ...infrastructureData,
+                          hardware: { ...infrastructureData.hardware, hardwareList: updatedList }
+                        });
+                      }}
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+                      rows="3"
+                      placeholder="CPU: Intel Xeon Gold 6248R, RAM: 64GB DDR4, Storage: 2x 960GB SSD RAID 1"
+                    />
+                  </div>
+
+                  {/* Informationen */}
+                  <div className="md:col-span-2">
+                    <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+                      Zusätzliche Informationen
+                    </label>
+                    <textarea
+                      value={hardware.informationen || ''}
+                      onChange={(e) => {
+                        const updatedList = [...infrastructureData.hardware.hardwareList];
+                        updatedList[index] = { ...hardware, informationen: e.target.value };
+                        setInfrastructureData({
+                          ...infrastructureData,
+                          hardware: { ...infrastructureData.hardware, hardwareList: updatedList }
+                        });
+                      }}
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+                      rows="3"
+                      placeholder="Garantie, Wartungsverträge, Besonderheiten, etc."
+                    />
+                  </div>
                 </div>
               </div>
-            )}
-          </div>
+            ))
+          )}
         </div>
       </div>
 
       {/* Mail */}
-<div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
-  <div className="flex items-center mb-4">
-    <Mail className="w-5 h-5 text-orange-500 mr-2" />
-    <h3 className={`text-lg font-medium ${textClass}`}>Mail Server</h3>
-  </div>
+      <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
+        <div className="flex items-center mb-4">
+          <Mail className="w-5 h-5 text-orange-500 mr-2" />
+          <h3 className={`text-lg font-medium ${textClass}`}>Mail Server</h3>
+        </div>
 
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-    {/* Anbieter */}
-    <div>
-      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
-        Mail-Anbieter
-      </label>
-      <select
-        value={infrastructureData.mail.anbieter || ""}
-        onChange={(e) =>
-          setInfrastructureData({
-            ...infrastructureData,
-            mail: { ...infrastructureData.mail, anbieter: e.target.value },
-          })
-        }
-        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-      >
-        <option value="">Bitte auswählen</option>
-        <option value="Exchange">Microsoft Exchange</option>
-        <option value="Office365">Microsoft Office 365</option>
-        <option value="Gmail">Google Workspace (Gmail)</option>
-        <option value="IMAP">IMAP/POP3 Server</option>
-        <option value="Other">Anderer Anbieter</option>
-      </select>
-    </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Anbieter */}
+          <div>
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+              Mail-Anbieter
+            </label>
+            <select
+              value={infrastructureData.mail?.anbieter || ''}
+              onChange={(e) =>
+                setInfrastructureData({
+                  ...infrastructureData,
+                  mail: { ...infrastructureData.mail, anbieter: e.target.value },
+                })
+              }
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+            >
+              <option value="">Bitte auswählen</option>
+              <option value="Exchange">Microsoft Exchange</option>
+              <option value="Office365">Microsoft Office 365</option>
+              <option value="Gmail">Google Workspace (Gmail)</option>
+              <option value="IMAP">IMAP/POP3 Server</option>
+              <option value="Other">Anderer Anbieter</option>
+            </select>
+          </div>
 
-    {/* Anzahl Postfächer */}
-    <div>
-      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
-        Anzahl Postfächer
-      </label>
-      <input
-        type="number"
-        value={infrastructureData.mail.anzahl_postfach || ""}
-        onChange={(e) =>
-          setInfrastructureData({
-            ...infrastructureData,
-            mail: { ...infrastructureData.mail, anzahl_postfach: e.target.value },
-          })
-        }
-        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-        placeholder="z.B. 25"
-        min="0"
-      />
-    </div>
+          {/* Anzahl Postfächer */}
+          <div>
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+              Anzahl Postfächer
+            </label>
+            <input
+              type="number"
+              value={infrastructureData.mail?.anzahl_postfach || ''}
+              onChange={(e) =>
+                setInfrastructureData({
+                  ...infrastructureData,
+                  mail: { ...infrastructureData.mail, anzahl_postfach: e.target.value },
+                })
+              }
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+              placeholder="z.B. 25"
+              min="0"
+            />
+          </div>
 
-    {/* Anzahl Shared Mailboxes */}
-    <div>
-      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
-        Anzahl Shared Mailboxes
-      </label>
-      <input
-        type="number"
-        value={infrastructureData.mail.anzahl_shared || ""}
-        onChange={(e) =>
-          setInfrastructureData({
-            ...infrastructureData,
-            mail: { ...infrastructureData.mail, anzahl_shared: e.target.value },
-          })
-        }
-        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-        placeholder="z.B. 5"
-        min="0"
-      />
-    </div>
+          {/* Anzahl Shared Mailboxes */}
+          <div>
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+              Anzahl Shared Mailboxes
+            </label>
+            <input
+              type="number"
+              value={infrastructureData.mail?.anzahl_shared || ''}
+              onChange={(e) =>
+                setInfrastructureData({
+                  ...infrastructureData,
+                  mail: { ...infrastructureData.mail, anzahl_shared: e.target.value },
+                })
+              }
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+              placeholder="z.B. 5"
+              min="0"
+            />
+          </div>
 
-    {/* Gesamt Speicher */}
-    <div>
-      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
-        Gesamt Speicher (GB)
-      </label>
-      <input
-        type="number"
-        value={infrastructureData.mail.gesamt_speicher || ""}
-        onChange={(e) =>
-          setInfrastructureData({
-            ...infrastructureData,
-            mail: { ...infrastructureData.mail, gesamt_speicher: e.target.value },
-          })
-        }
-        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-        placeholder="z.B. 500"
-        min="0"
-        step="0.1"
-      />
-    </div>
+          {/* Gesamt Speicher */}
+          <div>
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+              Gesamt Speicher (GB)
+            </label>
+            <input
+              type="number"
+              value={infrastructureData.mail?.gesamt_speicher || ''}
+              onChange={(e) =>
+                setInfrastructureData({
+                  ...infrastructureData,
+                  mail: { ...infrastructureData.mail, gesamt_speicher: e.target.value },
+                })
+              }
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+              placeholder="z.B. 500"
+              min="0"
+              step="0.1"
+            />
+          </div>
 
-    {/* Zusätzliche Mail-Felder (optional) */}
-    <div className="flex items-center">
-      <input
-        type="checkbox"
-        id="pop3_connector"
-        checked={infrastructureData.mail.pop3_connector || false}
-        onChange={(e) =>
-          setInfrastructureData({
-            ...infrastructureData,
-            mail: { ...infrastructureData.mail, pop3_connector: e.target.checked },
-          })
-        }
-        className={`h-4 w-4 text-blue-600 rounded focus:ring-blue-500 ${isDark ? 'border-gray-500' : 'border-gray-300'}`}
-      />
-      <label htmlFor="pop3_connector" className={`ml-2 text-sm ${textSecondaryClass}`}>
-        POP3-Connector vorhanden
-      </label>
-    </div>
+          {/* Zusatzoptionen */}
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="pop3_connector"
+              checked={infrastructureData.mail?.pop3_connector || false}
+              onChange={(e) =>
+                setInfrastructureData({
+                  ...infrastructureData,
+                  mail: { ...infrastructureData.mail, pop3_connector: e.target.checked },
+                })
+              }
+              className={`h-4 w-4 text-blue-600 rounded focus:ring-blue-500 ${isDark ? 'border-gray-500' : 'border-gray-300'}`}
+            />
+            <label htmlFor="pop3_connector" className={`ml-2 text-sm ${textSecondaryClass}`}>
+              POP3-Connector vorhanden
+            </label>
+          </div>
 
-    <div className="flex items-center">
-      <input
-        type="checkbox"
-        id="mobiler_zugriff"
-        checked={infrastructureData.mail.mobiler_zugriff || false}
-        onChange={(e) =>
-          setInfrastructureData({
-            ...infrastructureData,
-            mail: { ...infrastructureData.mail, mobiler_zugriff: e.target.checked },
-          })
-        }
-        className={`h-4 w-4 text-blue-600 rounded focus:ring-blue-500 ${isDark ? 'border-gray-500' : 'border-gray-300'}`}
-      />
-      <label htmlFor="mobiler_zugriff" className={`ml-2 text-sm ${textSecondaryClass}`}>
-        Mobiler Zugriff aktiviert
-      </label>
-    </div>
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="mobiler_zugriff"
+              checked={infrastructureData.mail?.mobiler_zugriff || false}
+              onChange={(e) =>
+                setInfrastructureData({
+                  ...infrastructureData,
+                  mail: { ...infrastructureData.mail, mobiler_zugriff: e.target.checked },
+                })
+              }
+              className={`h-4 w-4 text-blue-600 rounded focus:ring-blue-500 ${isDark ? 'border-gray-500' : 'border-gray-300'}`}
+            />
+            <label htmlFor="mobiler_zugriff" className={`ml-2 text-sm ${textSecondaryClass}`}>
+              Mobiler Zugriff aktiviert
+            </label>
+          </div>
 
-    {/* Informationen */}
-    <div className="md:col-span-2">
-      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
-        Informationen & Besonderheiten
-      </label>
-      <textarea
-        value={infrastructureData.mail.informationen || ""}
-        onChange={(e) =>
-          setInfrastructureData({
-            ...infrastructureData,
-            mail: { ...infrastructureData.mail, informationen: e.target.value },
-          })
-        }
-        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-        rows="3"
-        placeholder="Besondere Konfigurationen, Migrationshinweise, etc."
-      />
-    </div>
-  </div>
-</div>
+          {/* Informationen */}
+          <div className="md:col-span-2">
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+              Informationen & Besonderheiten
+            </label>
+            <textarea
+              value={infrastructureData.mail?.informationen || ''}
+              onChange={(e) =>
+                setInfrastructureData({
+                  ...infrastructureData,
+                  mail: { ...infrastructureData.mail, informationen: e.target.value },
+                })
+              }
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+              rows="3"
+              placeholder="Besondere Konfigurationen, Migrationshinweise, etc."
+            />
+          </div>
+        </div>
+      </div>
 
       {/* Software */}
       <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
@@ -520,7 +776,6 @@ function Step2({
         </div>
 
         <div className="grid grid-cols-1 gap-6">
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Software-Name */}
             <div>
@@ -572,7 +827,7 @@ function Step2({
               >
                 <option value="">Bitte auswählen</option>
                 <option value="hoch">Hoch (übernehmen)</option>
-                <option value="niedrig">Niedrig(nicht übernehmen)</option>
+                <option value="niedrig">Niedrig (nicht übernehmen)</option>
               </select>
             </div>
           </div>
@@ -700,7 +955,7 @@ function Step2({
               Backup-Tool
             </label>
             <select
-              value={infrastructureData.backup?.tool || ""}
+              value={infrastructureData.backup?.tool || ''}
               onChange={(e) =>
                 setInfrastructureData({
                   ...infrastructureData,
@@ -723,7 +978,7 @@ function Step2({
               Backup-Intervall
             </label>
             <select
-              value={infrastructureData.backup?.interval || ""}
+              value={infrastructureData.backup?.interval || ''}
               onChange={(e) =>
                 setInfrastructureData({
                   ...infrastructureData,
@@ -747,7 +1002,7 @@ function Step2({
             </label>
             <input
               type="text"
-              value={infrastructureData.backup?.retention || ""}
+              value={infrastructureData.backup?.retention || ''}
               onChange={(e) =>
                 setInfrastructureData({
                   ...infrastructureData,
@@ -766,7 +1021,7 @@ function Step2({
             </label>
             <input
               type="text"
-              value={infrastructureData.backup?.location || ""}
+              value={infrastructureData.backup?.location || ''}
               onChange={(e) =>
                 setInfrastructureData({
                   ...infrastructureData,
@@ -785,7 +1040,7 @@ function Step2({
             </label>
             <input
               type="number"
-              value={infrastructureData.backup?.size || ""}
+              value={infrastructureData.backup?.size || ''}
               onChange={(e) =>
                 setInfrastructureData({
                   ...infrastructureData,
@@ -804,7 +1059,7 @@ function Step2({
               Zusätzliche Informationen
             </label>
             <textarea
-              value={infrastructureData.backup?.info || ""}
+              value={infrastructureData.backup?.info || ''}
               onChange={(e) =>
                 setInfrastructureData({
                   ...infrastructureData,
@@ -873,18 +1128,25 @@ function Step3({
   loading,
   onBack,
   onFinalSubmit,
+  isDark, // <— hinzugefügt
 }) {
   const { bgClass, borderClass, textClass, textMutedClass } = classes;
+
   const { firmenname, email, strasse, hausnummer, plz, ort, telefonnummer, ansprechpartner } =
     onboardingCustomerData;
-  const { internet, users, hardware, mail, software, backup, sonstiges } = infrastructureData;
+
+  // defensive Defaults, damit nichts crasht
+  const users = infrastructureData.users || {};
+  const mail = infrastructureData.mail || {};
+  const software = infrastructureData.software || {};
+  const backup = infrastructureData.backup || {};
+  const sonstiges = infrastructureData.sonstiges || {};
 
   const yesNo = (v) => (v ? 'Ja' : 'Nein');
   const dash = (v) => (v !== undefined && v !== null && String(v).trim() !== '' ? String(v) : '—');
 
-  const appsText = software?.verwendete_applikationen_text || '';
-  const appsList = Array.isArray(software?.verwendete_applikationen) ? software.verwendete_applikationen : [];
-  const verwendeteHardware = Array.isArray(hardware?.verwendete_hardware) ? hardware.verwendete_hardware : [];
+  const appsText = software.verwendete_applikationen_text || '';
+  const appsList = Array.isArray(software.verwendete_applikationen) ? software.verwendete_applikationen : [];
 
   return (
     <div className="space-y-6">
@@ -924,17 +1186,20 @@ function Step3({
           </dl>
         </div>
 
-        {/* Internet & Firewall */}
+        {/* Netzwerk */}
         <div className="space-y-2 mb-6">
-          <h4 className={`font-semibold ${textClass}`}>Internet &amp; Firewall</h4>
+          <h4 className={`font-semibold ${textClass}`}>Netzwerk</h4>
           <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
             {[
-              { label: 'Internetzugang', value: internet?.zugang },
-              { label: 'Firewall-Modell', value: internet?.firewall_modell },
-              { label: 'Feste IP', value: yesNo(internet?.feste_ip) },
-              ...(internet?.feste_ip ? [{ label: 'IP-Adresse', value: internet?.ip_adresse }] : []),
-              { label: 'VPN erforderlich', value: yesNo(internet?.vpn_erforderlich) },
-              { label: 'VPN-User (Anzahl)', value: internet?.vpn_user_anzahl },
+              { label: 'Internetzugangsart', value: infrastructureData.netzwerk?.internetzugangsart },
+              { label: 'Firewall-Modell', value: infrastructureData.netzwerk?.firewall_modell },
+              { label: 'Feste IP vorhanden', value: yesNo(infrastructureData.netzwerk?.feste_ip_vorhanden) },
+              ...(infrastructureData.netzwerk?.feste_ip_vorhanden ? [{ label: 'IP-Adresse', value: infrastructureData.netzwerk?.ip_adresse }] : []),
+              { label: 'VPN-Einwahl erforderlich', value: yesNo(infrastructureData.netzwerk?.vpn_einwahl_erforderlich) },
+              ...(infrastructureData.netzwerk?.vpn_einwahl_erforderlich ? [
+                { label: 'Aktuelle VPN User', value: infrastructureData.netzwerk?.aktuelle_vpn_user },
+                { label: 'Geplante VPN User', value: infrastructureData.netzwerk?.geplante_vpn_user }
+              ] : []),
             ].map((item) => (
               <div key={item.label}>
                 <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
@@ -942,9 +1207,16 @@ function Step3({
               </div>
             ))}
           </dl>
+
+          {infrastructureData.netzwerk?.informationen && (
+            <div className="mt-2">
+              <dt className={`text-sm ${textMutedClass} mb-1`}>Zusätzliche Netzwerk-Informationen</dt>
+              <dd className={`text-sm ${textClass} whitespace-pre-line`}>{infrastructureData.netzwerk.informationen}</dd>
+            </div>
+          )}
         </div>
 
-        {/* Benutzer */}
+        {/* Benutzer (optional) */}
         <div className="space-y-2 mb-6">
           <h4 className={`font-semibold ${textClass}`}>Benutzer</h4>
           <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
@@ -963,11 +1235,63 @@ function Step3({
         {/* Hardware */}
         <div className="space-y-2 mb-6">
           <h4 className={`font-semibold ${textClass}`}>Hardware</h4>
+
+          {infrastructureData.hardware?.hardwareList?.length > 0 ? (
+            <div className="space-y-4">
+              {infrastructureData.hardware.hardwareList.map((hw, index) => (
+                <div key={hw.id} className={`${isDark ? 'bg-gray-700' : 'bg-gray-50'} p-4 rounded-lg`}>
+                  <h5 className={`font-medium ${textClass} mb-3`}>
+                    Hardware #{index + 1} {hw.typ && `(${hw.typ})`}
+                  </h5>
+
+                  <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+                    {[
+                      { label: 'Hardware-Typ', value: hw.typ },
+                      { label: 'Hersteller', value: hw.hersteller },
+                      { label: 'Modell', value: hw.modell },
+                      { label: 'Seriennummer', value: hw.seriennummer },
+                      { label: 'Standort', value: hw.standort },
+                      { label: 'IP-Adresse', value: hw.ip },
+                    ].map((item) => (
+                      <div key={item.label}>
+                        <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
+                        <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
+                      </div>
+                    ))}
+                  </dl>
+
+                  {hw.details_jsonb && (
+                    <div className="mt-3">
+                      <dt className={`text-sm ${textMutedClass} mb-1`}>Technische Details</dt>
+                      <dd className={`text-sm ${textClass} whitespace-pre-line`}>{hw.details_jsonb}</dd>
+                    </div>
+                  )}
+
+                  {hw.informationen && (
+                    <div className="mt-3">
+                      <dt className={`text-sm ${textMutedClass} mb-1`}>Zusätzliche Informationen</dt>
+                      <dd className={`text-sm ${textClass} whitespace-pre-line`}>{hw.informationen}</dd>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className={`text-sm ${textMutedClass}`}>Keine Hardware erfasst</p>
+          )}
+        </div>
+
+        {/* Mail */}
+        <div className="space-y-2 mb-6">
+          <h4 className={`font-semibold ${textClass}`}>Mail Server</h4>
           <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
             {[
-              { label: 'RAID-Level', value: hardware?.raid_level },
-              { label: 'USV vorhanden', value: yesNo(hardware?.usv_vorhanden) },
-              { label: 'USV-Modell', value: hardware?.usv_modell },
+              { label: 'Mail-Anbieter', value: mail?.anbieter },
+              { label: 'Anzahl Postfächer', value: mail?.anzahl_postfach },
+              { label: 'Anzahl Shared Mailboxes', value: mail?.anzahl_shared },
+              { label: 'Gesamt Speicher (GB)', value: mail?.gesamt_speicher },
+              { label: 'POP3-Connector', value: yesNo(mail?.pop3_connector) },
+              { label: 'Mobiler Zugriff', value: yesNo(mail?.mobiler_zugriff) },
             ].map((item) => (
               <div key={item.label}>
                 <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
@@ -976,176 +1300,22 @@ function Step3({
             ))}
           </dl>
 
-          <div className="mt-2">
-            <dt className={`text-sm ${textMutedClass} mb-1`}>Verwendete Hardware</dt>
-            {verwendeteHardware.length > 0 ? (
-              <ul className="list-disc list-inside text-sm space-y-1">
-                {verwendeteHardware.map((h, i) => (
-                  <li key={i} className={textClass}>{h}</li>
-                ))}
-              </ul>
-            ) : (
-              <p className={`text-sm ${textMutedClass}`}>—</p>
-            )}
-          </div>
+          {mail?.informationen && (
+            <div className="mt-2">
+              <dt className={`text-sm ${textMutedClass} mb-1`}>Informationen & Besonderheiten</dt>
+              <dd className={`text-sm ${textClass} whitespace-pre-line`}>{mail.informationen}</dd>
+            </div>
+          )}
         </div>
-
-        {/* Mail */}
-<div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
-  <div className="flex items-center mb-4">
-    <Mail className="w-5 h-5 text-orange-500 mr-2" />
-    <h3 className={`text-lg font-medium ${textClass}`}>Mail Server</h3>
-  </div>
-
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-    {/* Anbieter */}
-    <div>
-      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
-        Mail-Anbieter
-      </label>
-      <select
-        value={infrastructureData.mail.anbieter || ""}
-        onChange={(e) =>
-          setInfrastructureData({
-            ...infrastructureData,
-            mail: { ...infrastructureData.mail, anbieter: e.target.value },
-          })
-        }
-        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-      >
-        <option value="">Bitte auswählen</option>
-        <option value="Exchange">Microsoft Exchange</option>
-        <option value="Office365">Microsoft Office 365</option>
-        <option value="Gmail">Google Workspace (Gmail)</option>
-        <option value="IMAP">IMAP/POP3 Server</option>
-        <option value="Other">Anderer Anbieter</option>
-      </select>
-    </div>
-
-    {/* Anzahl Postfächer */}
-    <div>
-      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
-        Anzahl Postfächer
-      </label>
-      <input
-        type="number"
-        value={infrastructureData.mail.anzahl_postfach || ""}
-        onChange={(e) =>
-          setInfrastructureData({
-            ...infrastructureData,
-            mail: { ...infrastructureData.mail, anzahl_postfach: e.target.value },
-          })
-        }
-        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-        placeholder="z.B. 25"
-        min="0"
-      />
-    </div>
-
-    {/* Anzahl Shared Mailboxes */}
-    <div>
-      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
-        Anzahl Shared Mailboxes
-      </label>
-      <input
-        type="number"
-        value={infrastructureData.mail.anzahl_shared || ""}
-        onChange={(e) =>
-          setInfrastructureData({
-            ...infrastructureData,
-            mail: { ...infrastructureData.mail, anzahl_shared: e.target.value },
-          })
-        }
-        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-        placeholder="z.B. 5"
-        min="0"
-      />
-    </div>
-
-    {/* Gesamt Speicher */}
-    <div>
-      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
-        Gesamt Speicher (GB)
-      </label>
-      <input
-        type="number"
-        value={infrastructureData.mail.gesamt_speicher || ""}
-        onChange={(e) =>
-          setInfrastructureData({
-            ...infrastructureData,
-            mail: { ...infrastructureData.mail, gesamt_speicher: e.target.value },
-          })
-        }
-        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-        placeholder="z.B. 500"
-        min="0"
-        step="0.1"
-      />
-    </div>
-
-    {/* Zusätzliche Mail-Felder (optional) */}
-    <div className="flex items-center">
-      <input
-        type="checkbox"
-        id="pop3_connector"
-        checked={infrastructureData.mail.pop3_connector || false}
-        onChange={(e) =>
-          setInfrastructureData({
-            ...infrastructureData,
-            mail: { ...infrastructureData.mail, pop3_connector: e.target.checked },
-          })
-        }
-        className={`h-4 w-4 text-blue-600 rounded focus:ring-blue-500 ${isDark ? 'border-gray-500' : 'border-gray-300'}`}
-      />
-      <label htmlFor="pop3_connector" className={`ml-2 text-sm ${textSecondaryClass}`}>
-        POP3-Connector vorhanden
-      </label>
-    </div>
-
-    <div className="flex items-center">
-      <input
-        type="checkbox"
-        id="mobiler_zugriff"
-        checked={infrastructureData.mail.mobiler_zugriff || false}
-        onChange={(e) =>
-          setInfrastructureData({
-            ...infrastructureData,
-            mail: { ...infrastructureData.mail, mobiler_zugriff: e.target.checked },
-          })
-        }
-        className={`h-4 w-4 text-blue-600 rounded focus:ring-blue-500 ${isDark ? 'border-gray-500' : 'border-gray-300'}`}
-      />
-      <label htmlFor="mobiler_zugriff" className={`ml-2 text-sm ${textSecondaryClass}`}>
-        Mobiler Zugriff aktiviert
-      </label>
-    </div>
-
-    {/* Informationen */}
-    <div className="md:col-span-2">
-      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
-        Informationen & Besonderheiten
-      </label>
-      <textarea
-        value={infrastructureData.mail.informationen || ""}
-        onChange={(e) =>
-          setInfrastructureData({
-            ...infrastructureData,
-            mail: { ...infrastructureData.mail, informationen: e.target.value },
-          })
-        }
-        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-        rows="3"
-        placeholder="Besondere Konfigurationen, Migrationshinweise, etc."
-      />
-    </div>
-  </div>
-</div>
 
         {/* Software */}
         <div className="space-y-2 mb-6">
           <h4 className={`font-semibold ${textClass}`}>Software</h4>
           <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
             {[
+              { label: 'Software-Name', value: software?.name },
+              { label: 'Anzahl Lizenzen', value: software?.licenses },
+              { label: 'Kritikalität', value: software?.critical },
               { label: 'Virenschutz', value: software?.virenschutz },
               { label: 'Schnittstellen', value: software?.schnittstellen },
               { label: 'Wartungsvertrag', value: yesNo(software?.wartungsvertrag) },
@@ -1157,6 +1327,26 @@ function Step3({
               </div>
             ))}
           </dl>
+
+          {software?.description && (
+            <div className="mt-2">
+              <dt className={`text-sm ${textMutedClass} mb-1`}>Beschreibung</dt>
+              <dd className={`text-sm ${textClass} whitespace-pre-line`}>{software.description}</dd>
+            </div>
+          )}
+
+          {software?.requirements?.length > 0 && (
+            <div className="mt-2">
+              <dt className={`text-sm ${textMutedClass} mb-1`}>Systemanforderungen</dt>
+              <ul className="list-disc list-inside text-sm space-y-1">
+                {software.requirements.map((req, i) => (
+                  <li key={i} className={textClass}>
+                    <strong>{req.type}:</strong> {req.detail}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <div className="mt-2">
             <dt className={`text-sm ${textMutedClass} mb-1`}>Verwendete Applikationen (Text)</dt>
@@ -1175,6 +1365,32 @@ function Step3({
               <p className={`text-sm ${textMutedClass}`}>—</p>
             )}
           </div>
+        </div>
+
+        {/* Backup */}
+        <div className="space-y-2 mb-6">
+          <h4 className={`font-semibold ${textClass}`}>Backup-Konfiguration</h4>
+          <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+            {[
+              { label: 'Backup-Tool', value: backup?.tool },
+              { label: 'Backup-Intervall', value: backup?.interval },
+              { label: 'Aufbewahrungsdauer', value: backup?.retention },
+              { label: 'Speicherort', value: backup?.location },
+              { label: 'Geschätzte Größe (GB)', value: backup?.size },
+            ].map((item) => (
+              <div key={item.label}>
+                <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
+                <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
+              </div>
+            ))}
+          </dl>
+
+          {backup?.info && (
+            <div className="mt-2">
+              <dt className={`text-sm ${textMutedClass} mb-1`}>Zusätzliche Informationen</dt>
+              <dd className={`text-sm ${textClass} whitespace-pre-line`}>{backup.info}</dd>
+            </div>
+          )}
         </div>
 
         {/* Sonstiges */}
@@ -1221,7 +1437,6 @@ export default function OnboardingSection({
     { id: 3, title: 'Bestätigung', icon: CheckCircle, description: 'Daten prüfen und speichern' },
   ];
 
-  // Dark Mode Klassen
   const classes = {
     bgClass: isDark ? 'bg-gray-800' : 'bg-white',
     borderClass: isDark ? 'border-gray-700' : 'border-gray-200',
@@ -1307,6 +1522,7 @@ export default function OnboardingSection({
           loading={loading}
           onBack={() => setCurrentOnboardingStep(2)}
           onFinalSubmit={onFinalSubmit}
+          isDark={isDark} // <— weitergereicht
         />
       )}
     </div>
