@@ -4,7 +4,6 @@ import {
   Building,
   Network,
   Shield,
-  User,
   Server,
   Mail,
   Settings,
@@ -1128,7 +1127,7 @@ function Step3({
   loading,
   onBack,
   onFinalSubmit,
-  isDark, // <— hinzugefügt
+  isDark,
 }) {
   const { bgClass, borderClass, textClass, textMutedClass } = classes;
 
@@ -1276,7 +1275,7 @@ function Step3({
                 </div>
               ))}
             </div>
-          ) : (
+            ) : (
             <p className={`text-sm ${textMutedClass}`}>Keine Hardware erfasst</p>
           )}
         </div>
@@ -1429,7 +1428,7 @@ export default function OnboardingSection({
   setInfrastructureData,
   loading,
   onFinalSubmit,
-  isDark, // Dark Mode Status als Prop
+  isDark,
 }) {
   const onboardingSteps = [
     { id: 1, title: 'Kundendaten', icon: Building, description: 'Firmendaten und Kontakt' },
@@ -1522,7 +1521,7 @@ export default function OnboardingSection({
           loading={loading}
           onBack={() => setCurrentOnboardingStep(2)}
           onFinalSubmit={onFinalSubmit}
-          isDark={isDark} // <— weitergereicht
+          isDark={isDark}
         />
       )}
     </div>

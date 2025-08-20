@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';   // ✅ hinzufügen
+import { Link } from 'react-router-dom';   // hinzufügen
 import './login.css';
 
 const Login = ({ onLoginSuccess }) => {
@@ -18,7 +18,7 @@ const Login = ({ onLoginSuccess }) => {
       const data = await res.json();
 
       if (res.ok) {
-        onLoginSuccess?.(data.user);                       // ✅ falls Prop fehlt, kein Crash
+        onLoginSuccess?.(data.user);                       // falls Prop fehlt, kein Crash
       } else {
         setError(data.error || 'Unbekannter Fehler beim Login');
       }
