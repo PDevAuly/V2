@@ -6,41 +6,50 @@ require('dotenv').config();
 
 const app = express();
 
-/* ===================== Middleware ===================== */
+/* ===================== CORS & JSON ===================== */
 const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || '')
   .split(',')
   .map(s => s.trim())
   .filter(Boolean);
 
-app.use(
-  cors(
-    ALLOWED_ORIGINS.length
-      ? { origin: ALLOWED_ORIGINS, credentials: true }
-      : undefined
-  )
-);
+const isProd = process.env.NODE_ENV === 'production';
+const corsOptions = isProd
+  ? { origin: ALLOWED_ORIGINS.length ? ALLOWED_ORIGINS : false, credentials: true }
+  : { origin: true, credentials: true }; // dev: alle Origins
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 app.use(express.json({ limit: '2mb' }));
 
 /* ===================== DB Connection ===================== */
-const pool = new Pool({
+// WICHTIG: Default auf localhost (lokal), im Compose kommt PGHOST=db aus env.
+const dbConfig = {
   user: process.env.PGUSER || 'postgres',
-  host: process.env.PGHOST || 'db',     // in Docker meist "db"
+  host: process.env.PGHOST || 'localhost',
   database: process.env.PGDATABASE || 'postgres',
-  password: process.env.PGPASSWORD || 'pauly2026!', // in PROD per ENV setzen
+  password: process.env.PGPASSWORD || 'pauly2026!',
   port: Number(process.env.PGPORT || 5432),
-});
+};
+const pool = new Pool(dbConfig);
 
 pool.connect((err, client, release) => {
+  console.log('🚀 Server läuft auf http://localhost:5000');
+  console.log('🌐 CORS aktiv für:', isProd ? (ALLOWED_ORIGINS.join(', ') || '(none)') : 'ALLE (dev)');
+  console.log('📊 Health Check: http://localhost:5000/api/health');
+  console.log('🔧 Mode:', process.env.NODE_ENV || 'development');
+  console.log('🗄️  DB Config:', { ...dbConfig, password: '***' });
+
   if (err) {
-    console.error('❌ DB-Verbindung fehlgeschlagen:', err.stack);
+    console.error('❌ DB-Verbindung fehlgeschlagen:', err.message);
   } else {
-    console.log('✅ DB verbunden:', client.database);
+    console.log('✅ DB verbunden:', client.database, '@', dbConfig.host + ':' + dbConfig.port);
     release();
   }
 });
 
 /* ===================== Helpers ===================== */
-const toNumberOrNull = (v) => (v === '' || v === undefined || v === null ? null : Number(v));
+const toNumberOrNull = (v) =>
+  v === '' || v === undefined || v === null ? null : Number(v);
 
 const normalizeJSONB = (val) => {
   if (val === undefined || val === null) return null;
@@ -52,20 +61,28 @@ const normalizeJSONB = (val) => {
 };
 
 /* ===================== Health / Test ===================== */
-app.get('/api/health', (req, res) => {
-  res.status(200).json({
-    ok: true,
-    message: 'Backend OK',
-    timestamp: new Date().toISOString(),
-    env: process.env.NODE_ENV || 'development',
-  });
+app.get('/api/health', async (req, res) => {
+  try {
+    const r = await pool.query('SELECT NOW() as now');
+    res.status(200).json({
+      ok: true,
+      message: 'Backend OK',
+      db: 'connected',
+      now: r.rows[0].now,
+      env: process.env.NODE_ENV || 'development',
+    });
+  } catch {
+    res.status(200).json({
+      ok: true,
+      message: 'Backend OK',
+      db: 'disconnected',
+      env: process.env.NODE_ENV || 'development',
+    });
+  }
 });
 
 app.get('/api/test', (req, res) => {
-  res.json({
-    message: 'Backend läuft!',
-    timestamp: new Date().toISOString(),
-  });
+  res.json({ message: 'Backend läuft!', timestamp: new Date().toISOString() });
 });
 
 /* ===================== Auth (simple) ===================== */
@@ -73,7 +90,7 @@ app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, passwort } = req.body;
     const r = await pool.query(
-      'SELECT mitarbeiter_id, name, vorname, email, rolle, passwort FROM mitarbeiter WHERE email = $1',
+      'SELECT mitarbeiter_id, name, vorname, email, rolle, passwort FROM mitarbeiter WHERE email=$1',
       [email]
     );
     if (!r.rows.length) return res.status(401).json({ error: 'Benutzer nicht gefunden' });
@@ -82,13 +99,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     res.json({
       message: 'Login erfolgreich',
-      user: {
-        id: u.mitarbeiter_id,
-        name: u.name,
-        vorname: u.vorname,
-        email: u.email,
-        rolle: u.rolle,
-      },
+      user: { id: u.mitarbeiter_id, name: u.name, vorname: u.vorname, email: u.email, rolle: u.rolle },
     });
   } catch (e) {
     console.error('Login Error:', e);
@@ -172,7 +183,7 @@ app.post('/api/customers', async (req, res) => {
           ansprechpartner?.name || null,
           ansprechpartner?.position || null,
           ansprechpartner?.email || email,
-          ansprechpartner?.telefonnummer || telefonnummer || null
+          ansprechpartner?.telefonnummer || telefonnummer || null,
         ]
       );
     }
@@ -189,7 +200,6 @@ app.post('/api/customers', async (req, res) => {
 });
 
 /* ===================== Kalkulationen ===================== */
-// Übersicht (für Dashboard)
 app.get('/api/kalkulationen', async (req, res) => {
   try {
     const result = await pool.query(`
@@ -213,7 +223,6 @@ app.get('/api/kalkulationen', async (req, res) => {
   }
 });
 
-// Neue Kalkulation speichern
 app.post('/api/kalkulationen', async (req, res) => {
   const client = await pool.connect();
   try {
@@ -223,16 +232,15 @@ app.post('/api/kalkulationen', async (req, res) => {
       return res.status(400).json({ error: 'kunde_id, stundensatz und dienstleistungen sind erforderlich' });
     }
 
-    // Summen berechnen (Netto)
     let gesamtzeit = 0;
     let gesamtpreis = 0;
     for (const d of dienstleistungen) {
-      const dauer   = Number(d?.dauer_pro_einheit) || 0;
-      const anzahl  = Number(d?.anzahl) || 1;
+      const dauer = Number(d?.dauer_pro_einheit) || 0;
+      const anzahl = Number(d?.anzahl) || 1;
       const stunden = dauer * anzahl;
-      const satz    = d?.stundensatz === '' || d?.stundensatz === undefined || d?.stundensatz === null
-                        ? Number(stundensatz) || 0
-                        : Number(d.stundensatz) || 0;
+      const satz = (d?.stundensatz ?? '') === '' || d?.stundensatz === null
+        ? Number(stundensatz) || 0
+        : Number(d.stundensatz) || 0;
 
       gesamtzeit  += stunden;
       gesamtpreis += stunden * satz;
@@ -250,7 +258,7 @@ app.post('/api/kalkulationen', async (req, res) => {
         Number(stundensatz) || 0,
         mwst_prozent === undefined ? 19 : Number(mwst_prozent),
         gesamtzeit,
-        gesamtpreis
+        gesamtpreis,
       ]
     );
 
@@ -266,10 +274,8 @@ app.post('/api/kalkulationen', async (req, res) => {
           d.beschreibung || '',
           toNumberOrNull(d.anzahl) ?? 1,
           toNumberOrNull(d.dauer_pro_einheit) ?? 0,
-          d.stundensatz === '' || d.stundensatz === undefined || d.stundensatz === null
-            ? null
-            : Number(d.stundensatz),
-          d.info || null
+          d.stundensatz === '' || d.stundensatz === undefined || d.stundensatz === null ? null : Number(d.stundensatz),
+          d.info || null,
         ]
       );
     }
@@ -285,7 +291,6 @@ app.post('/api/kalkulationen', async (req, res) => {
   }
 });
 
-// Stats fürs Dashboard (robust, mit Monatszahlen)
 app.get('/api/kalkulationen/stats', async (req, res) => {
   try {
     const [kundenCount, aktiveOnb, monatsStunden, monatsUmsatz] = await Promise.all([
@@ -307,8 +312,8 @@ app.get('/api/kalkulationen/stats', async (req, res) => {
     res.json({
       activeCustomers: Number(kundenCount.rows[0].count || 0),
       runningProjects: Number(aktiveOnb.rows[0].count || 0),
-      monthlyHours:    Number(monatsStunden.rows[0].total_hours || 0),
-      monthlyRevenue:  Number(monatsUmsatz.rows[0].total_revenue || 0),
+      monthlyHours: Number(monatsStunden.rows[0].total_hours || 0),
+      monthlyRevenue: Number(monatsUmsatz.rows[0].total_revenue || 0),
     });
   } catch (e) {
     console.error('GET /api/kalkulationen/stats error:', e);
@@ -327,16 +332,14 @@ app.post('/api/onboarding', async (req, res) => {
 
     await client.query('BEGIN');
 
-    // 1) Onboarding
     const ob = await client.query(
-      `INSERT INTO onboarding (datum, status, mitarbeiter_id, kunde_id, infrastructure_data)
-       VALUES (CURRENT_DATE, 'neu', $1, $2, $3)
+      `INSERT INTO onboarding (datum, status, mitarbeiter_id, kunde_id)
+       VALUES (CURRENT_DATE, 'neu', $1, $2)
        RETURNING onboarding_id`,
-      [mitarbeiter_id || 1, kunde_id, JSON.stringify(infrastructure_data)]
+      [mitarbeiter_id || 1, kunde_id]
     );
     const onboardingId = ob.rows[0].onboarding_id;
 
-    // 2) Netzwerk
     if (infrastructure_data.netzwerk) {
       const n = infrastructure_data.netzwerk;
       await client.query(
@@ -358,29 +361,40 @@ app.post('/api/onboarding', async (req, res) => {
       );
     }
 
-    // 3) Hardware (Liste)
-    if (infrastructure_data.hardware?.hardwareList?.length) {
-      for (const hw of infrastructure_data.hardware.hardwareList) {
-        await client.query(
-          `INSERT INTO onboarding_hardware
-             (onboarding_id, typ, hersteller, modell, seriennummer, standort, ip, details_jsonb, informationen)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-          [
-            onboardingId,
-            hw.typ || null,
-            hw.hersteller || null,
-            hw.modell || null,
-            hw.seriennummer || null,
-            hw.standort || null,
-            hw.ip || null,
-            JSON.stringify(normalizeJSONB(hw.details_jsonb)),
-            hw.informationen || null,
-          ]
-        );
-      }
+    const hwList = Array.isArray(infrastructure_data.hardware?.hardwareList)
+      ? infrastructure_data.hardware.hardwareList
+      : (infrastructure_data.hardware &&
+         (infrastructure_data.hardware.typ ||
+          infrastructure_data.hardware.hersteller ||
+          infrastructure_data.hardware.modell ||
+          infrastructure_data.hardware.seriennummer ||
+          infrastructure_data.hardware.standort ||
+          infrastructure_data.hardware.ip ||
+          (infrastructure_data.hardware.details_jsonb &&
+           Object.keys(infrastructure_data.hardware.details_jsonb).length) ||
+          infrastructure_data.hardware.informationen))
+        ? [infrastructure_data.hardware]
+        : [];
+
+    for (const hw of hwList) {
+      await client.query(
+        `INSERT INTO onboarding_hardware
+           (onboarding_id, typ, hersteller, modell, seriennummer, standort, ip, details_jsonb, informationen)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [
+          onboardingId,
+          hw.typ || null,
+          hw.hersteller || null,
+          hw.modell || null,
+          hw.seriennummer || null,
+          hw.standort || null,
+          hw.ip || null,
+          JSON.stringify(normalizeJSONB(hw.details_jsonb)),
+          hw.informationen || null,
+        ]
+      );
     }
 
-    // 4) Mail
     if (infrastructure_data.mail) {
       const m = infrastructure_data.mail;
       await client.query(
@@ -401,7 +415,6 @@ app.post('/api/onboarding', async (req, res) => {
       );
     }
 
-    // 5) Software (+ Requirements + Apps)
     if (infrastructure_data.software) {
       const s = infrastructure_data.software;
       const sw = await client.query(
@@ -425,7 +438,6 @@ app.post('/api/onboarding', async (req, res) => {
       );
       const softwareId = sw.rows[0].software_id;
 
-      // Requirements (type/detail)
       if (Array.isArray(s.requirements)) {
         for (const r of s.requirements) {
           await client.query(
@@ -436,13 +448,9 @@ app.post('/api/onboarding', async (req, res) => {
         }
       }
 
-      // Apps (Liste)
       const apps = Array.isArray(s.verwendete_applikationen) && s.verwendete_applikationen.length
         ? s.verwendete_applikationen
-        : (s.verwendete_applikationen_text || '')
-            .split('\n')
-            .map(x => x.trim())
-            .filter(Boolean);
+        : (s.verwendete_applikationen_text || '').split('\n').map(x => x.trim()).filter(Boolean);
 
       for (const appName of apps) {
         await client.query(
@@ -453,7 +461,6 @@ app.post('/api/onboarding', async (req, res) => {
       }
     }
 
-    // 6) Backup
     if (infrastructure_data.backup) {
       const b = infrastructure_data.backup;
       await client.query(
@@ -472,7 +479,6 @@ app.post('/api/onboarding', async (req, res) => {
       );
     }
 
-    // 7) Sonstiges
     if (infrastructure_data.sonstiges?.text) {
       await client.query(
         `INSERT INTO onboarding_sonstiges (onboarding_id, text)

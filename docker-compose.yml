@@ -17,12 +17,12 @@ services:
     ports:
       - "5000:5000"
     depends_on:
-      - db
+      - localhost
     env_file:
       - ./backend/.env
     environment:
       - NODE_ENV=development
-      - PGHOST=db
+      - PGHOST=localhost
       - PGPORT=5432
       - PGUSER=postgres
       - PGPASSWORD=pauly2026!
