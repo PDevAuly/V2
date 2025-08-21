@@ -39,10 +39,9 @@ export default function Dashboard({ onLogout, userInfo }) {
       ? res.json()
       : Promise.reject(await res.json().catch(() => ({ error: res.statusText || 'Request failed' })));
 
-  // Daten-States
+  // Daten-States (Projekte entfernt)
   const [stats, setStats] = useState({
     activeCustomers: 0,
-    runningProjects: 0,
     monthlyHours: 0,
     monthlyRevenue: 0,
   });
@@ -51,7 +50,7 @@ export default function Dashboard({ onLogout, userInfo }) {
   const [calculationForm, setCalculationForm] = useState({
     kunde_id: '',
     stundensatz: 85,
-    dienstleistungen: [{ beschreibung: '', dauer_pro_einheit: 0, anzahl: 1, info: '' }],
+    dienstleistungen: [],
   });
   const [mwst, setMwst] = useState(19);
 
@@ -85,7 +84,7 @@ export default function Dashboard({ onLogout, userInfo }) {
       seriennummer: '',
       standort: '',
       ip: '',
-      details_jsonb: {}, // JSON-Objekt statt leerer String
+      details_jsonb: {}, // JSON-Objekt
       informationen: '',
     },
     mail: {
@@ -142,18 +141,22 @@ export default function Dashboard({ onLogout, userInfo }) {
         getJson(kalkulationenRes),
       ]);
 
-      setStats(
-        statsData ?? { activeCustomers: 0, runningProjects: 0, monthlyHours: 0, monthlyRevenue: 0 }
-      );
+      // Auf genutzte Kennzahlen mappen (falls dein /stats andere Felder liefert)
+      const mappedStats = {
+        activeCustomers: Array.isArray(customersData) ? customersData.length : 0,
+        monthlyHours: Number(statsData?.avg_zeit ?? statsData?.monthlyHours ?? 0),
+        monthlyRevenue: Number(statsData?.total_umsatz ?? statsData?.monthlyRevenue ?? 0),
+      };
+
+      setStats(mappedStats);
       setCustomers(customersData ?? []);
       setKalkulationen(kalkulationenData ?? []);
     } catch (error) {
       console.warn('Fallback auf Mock-Daten:', error);
       setStats({
-        activeCustomers: 999,
-        runningProjects: 999,
-        monthlyHours: 999,
-        monthlyRevenue: 99999999,
+        activeCustomers: 0,
+        monthlyHours: 0,
+        monthlyRevenue: 0,
       });
     } finally {
       setLoading(false);
@@ -171,7 +174,6 @@ export default function Dashboard({ onLogout, userInfo }) {
     }
     try {
       setLoading(true);
-      // Hier würdest du ans Backend senden
       await new Promise((resolve) => setTimeout(resolve, 1000));
       alert('✅ Passwort erfolgreich geändert!');
       setPasswordData({
@@ -281,26 +283,36 @@ export default function Dashboard({ onLogout, userInfo }) {
     }
   };
 
+  // ===== NEU: nur Kunde ist Pflicht, keine strenge Zeilen-Validierung =====
   const handleCalculationSubmit = async (e) => {
     e.preventDefault();
 
-    if (!calculationForm.kunde_id) return alert('Bitte einen Kunden auswählen.');
-    if (
-      calculationForm.dienstleistungen.length === 0 ||
-      calculationForm.dienstleistungen.some((d) => !d.beschreibung || !Number(d.dauer_pro_einheit))
-    ) {
-      return alert('Bitte alle Dienstleistungen vollständig ausfüllen.');
+    if (!calculationForm.kunde_id) {
+      alert('Bitte einen Kunden auswählen.');
+      return;
     }
 
     setLoading(true);
     try {
       const payload = {
-        ...calculationForm,
-        stundensatz: Number(calculationForm.stundensatz),
-        dienstleistungen: calculationForm.dienstleistungen.map((d) => ({
-          ...d,
-          dauer_pro_einheit: Number(d.dauer_pro_einheit),
-          anzahl: Number(d.anzahl || 1),
+        kunde_id: calculationForm.kunde_id,
+        // Standard-Stundensatz darf leer sein -> null
+        stundensatz:
+          calculationForm.stundensatz === '' || calculationForm.stundensatz === undefined
+            ? null
+            : Number(calculationForm.stundensatz) || 0,
+        // MwSt wird aktuell serverseitig nicht benötigt, kann aber mitgesendet werden
+        mwst: Number(mwst) || 0,
+        dienstleistungen: (calculationForm.dienstleistungen || []).map((d) => ({
+          beschreibung: d.beschreibung,
+          section: d.section ?? null,
+          anzahl: Number(d.anzahl) || 0,                 // 0 erlaubt
+          dauer_pro_einheit: Number(d.dauer_pro_einheit) || 0, // 0 erlaubt
+          info: (d.info || '').trim() || null,
+          stundensatz:
+            d.stundensatz === undefined || d.stundensatz === ''
+              ? null
+              : Number(d.stundensatz) || 0,              // 0 erlaubt
         })),
       };
 
@@ -310,21 +322,22 @@ export default function Dashboard({ onLogout, userInfo }) {
         body: JSON.stringify(payload),
       });
 
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        return alert(`❌ Fehler: ${err.error || response.statusText}`);
+        throw new Error(data?.error || response.statusText || 'Unbekannter Fehler');
       }
 
       alert('✅ Kalkulation wurde erfolgreich erstellt!');
+      // Zurücksetzen – die Section-Komponente seedet die Liste wieder selbst
       setCalculationForm({
         kunde_id: '',
         stundensatz: 85,
-        dienstleistungen: [{ beschreibung: '', dauer_pro_einheit: 0, anzahl: 1, info: '' }],
+        dienstleistungen: [],
       });
       await loadDashboardData();
     } catch (error) {
       console.error('Error creating calculation:', error);
-      alert('❌ Fehler beim Erstellen der Kalkulation - Backend nicht erreichbar');
+      alert('❌ Fehler beim Erstellen der Kalkulation: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -501,18 +514,18 @@ export default function Dashboard({ onLogout, userInfo }) {
                 Dashboard Übersicht
               </h2>
               <p className="text-gray-600 dark:text-gray-400">
-                Aktuelle Statistiken und laufende Projekte
+                Aktuelle Statistiken und Kalkulationen
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            {/* Projekte-Kachel entfernt (nur 3 Kacheln) */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {[
                 { icon: User, bg: 'bg-blue-500', label: 'Kunden', value: stats.activeCustomers },
-                { icon: Calculator, bg: 'bg-green-500', label: 'Projekte', value: stats.runningProjects },
                 {
                   icon: Clock,
                   bg: 'bg-orange-500',
-                  label: 'Stunden (Monat)',
+                  label: 'Stunden (Ø/Monat)',
                   value: Math.round(stats.monthlyHours) + 'h',
                 },
                 { icon: TrendingUp, bg: 'bg-purple-500', label: 'Umsatz (Monat)', value: euro(stats.monthlyRevenue) },

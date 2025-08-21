@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronRight, ChevronDown } from 'lucide-react';
 
 export default function CalculationSection({
@@ -11,93 +11,81 @@ export default function CalculationSection({
   onSubmit,
   isDark,
 }) {
-  // --- Vorlage aus deiner Excel (Beispiel; erweitere/ändere die Liste nach Bedarf) ---
   const TEMPLATE = [
-    {
-      section: 'Vorbereitende Maßnahmen',
-      items: [
-        'Aufbau Testumgebung',
-        'Installation Firmware Server',
-        'Konfiguration Server',
-        'Lizenzregistrierungen VMWare,Veeam, VLSC/OpenLicense',
-        'Konfiguration USV inkl. Shutdown etc.',
-        'Installatioin/Firmwareupdates/Grundkonfiguration MSA',
-        'Installatioin/Firmwareupdates/Grundkonfiguration Nimble',
-        'Einrichten Volumes',
-        'Konfiguration Nimble Peer Persistance',
-        'Konfiguration SAN (iSCI)',
-        'Konfiguration SAN (Fibre Channel, Zoning)',
-        'Konfiguration Storageanbindung (Neusysteme/Altsysteme zur Migration)',
-        'Installation und Patchen Betriebssystem VMWare',
-        'Installation und Patchen Betriebssystem Windows Server',
-        'Installation und Patchen pro Windows-VM',
-        'Installation/Grundkonfiguration Hyper-V',
-        'Installation/Grundkonfiguration VCSA',
-        'Konfiguration VMWare-Dienste (HA etc.)',
-        'Installation/Grundkonfiguration Active Directory inkl. Serverrollen (DNS,DHCP etc.)',
-      ],
-    },
-    {
-      section: 'Hardware-Arbeiten vor Ort',
-      items: [
-        'Einbau Hardware vor Ort',
-        'Rackumbau',
-        'Konfiguration Switch Management, pro VLAN',
-      ],
-    },
-    {
-      section: 'Software-Arbeiten (Remote)',
-      items: [
-        'Migrationsvorbereitungen (Patchen Altsysteme) pro System',
-        'Einrichtung/Migration Active Directory pro User',
-        'Konfiguration pro Gruppenrichtlinie',
-        'Installation/Grundkonfiguration Exchange Server',
-        'Konfiguration Exchange DAG',
-        'Migration Exchange-Mailbox pro User',
-        'Migration Public Folder-Datenbank pro PF',
-        'Konfiguration Mail-Filtertools',
-        'Grundkonfiguration Exchange Online Admin-Portal',
-        'Migration zu Exchange Online mit Office 365 pro Konto',
-        'Neueinrichtung Exchange Online 365 ohne bisherigen Exchange',
-        'Konfiguration Azure AD-Sync',
-        'Neuinstallation/Migration SEPM',
-        'Rollout SEPM-Pakete, ggf. Konfiguration Policies',
-        'Rollout Sophos',
-        'Rollout/Prüfung Monitoring',
-        'Installation/Migration Mailstore',
-        'Migration pro Fachanwendung (Zeitschätzung circa und in Kooperation mit dem Softwarehersteller)',
-        'Migration File-Server, neue Shares, ACL',
-        'Installation/Konfiguration/Lizensierung Terminal Server',
-        'Migration pro VM auf neue Hosts',
-        'Virtualisierung pro VM (P-2-V/V-2-V)',
-        'Installation, Konfiguration, Test HPDM/UMS',
-        'Installation Backup-Software',
-        'Backup-Konfiguration und Test',
-      ],
-    },
-    {
-      section: 'Client-Anpassungen vor Ort',
-      items: [
-        'Migration pro Client-PC',
-        'Grundkonfiguration pro Client-PC (neuer PC)',
-        'Einrichten Thin-Client',
-      ],
-    },
-    {
-      section: 'Firewall-Anpassungen / Einrichtung vor Ort',
-      items: [
-        'Einrichtung Sonicwall im Netz (Einbau, Einbinden ins Netz, VPN-Zugang, Site-to-Site-VPN)',
-      ],
-    },
-    {
-      section: 'Dokumentation',
-      items: [
-        'Dokumentation inkl. Handout für den Kunden',
-      ],
-    },
+    { section: 'Vorbereitende Maßnahmen', items: [
+      'Aufbau Testumgebung',
+      'Installation Firmware Server',
+      'Konfiguration Server',
+      'Lizenzregistrierungen VMWare,Veeam, VLSC/OpenLicense',
+      'Konfiguration USV inkl. Shutdown etc.',
+      'Installatioin/Firmwareupdates/Grundkonfiguration MSA',
+      'Installatioin/Firmwareupdates/Grundkonfiguration Nimble',
+      'Einrichten Volumes',
+      'Konfiguration Nimble Peer Persistance',
+      'Konfiguration SAN (iSCI)',
+      'Konfiguration SAN (Fibre Channel, Zoning)',
+      'Konfiguration Storageanbindung (Neusysteme/Altsysteme zur Migration)',
+      'Installation und Patchen Betriebssystem VMWare',
+      'Installation und Patchen Betriebssystem Windows Server',
+      'Installation und Patchen pro Windows-VM',
+      'Installation/Grundkonfiguration Hyper-V',
+      'Installation/Grundkonfiguration VCSA',
+      'Konfiguration VMWare-Dienste (HA etc.)',
+      'Installation/Grundkonfiguration Active Directory inkl. Serverrollen (DNS,DHCP etc.)',
+    ]},
+    { section: 'Hardware-Arbeiten vor Ort', items: [
+      'Einbau Hardware vor Ort',
+      'Rackumbau',
+      'Konfiguration Switch Management, pro VLAN',
+    ]},
+    { section: 'Software-Arbeiten (Remote)', items: [
+      'Migrationsvorbereitungen (Patchen Altsysteme) pro System',
+      'Einrichtung/Migration Active Directory pro User',
+      'Konfiguration pro Gruppenrichtlinie',
+      'Installation/Grundkonfiguration Exchange Server',
+      'Konfiguration Exchange DAG',
+      'Migration Exchange-Mailbox pro User',
+      'Migration Public Folder-Datenbank pro PF',
+      'Konfiguration Mail-Filtertools',
+      'Grundkonfiguration Exchange Online Admin-Portal',
+      'Migration zu Exchange Online mit Office 365 pro Konto',
+      'Neueinrichtung Exchange Online 365 ohne bisherigen Exchange',
+      'Konfiguration Azure AD-Sync',
+      'Neuinstallation/Migration SEPM',
+      'Rollout SEPM-Pakete, ggf. Konfiguration Policies',
+      'Rollout Sophos',
+      'Rollout/Prüfung Monitoring',
+      'Installation/Migration Mailstore',
+      'Migration pro Fachanwendung (Zeitschätzung circa und in Kooperation mit dem Softwarehersteller)',
+      'Migration File-Server, neue Shares, ACL',
+      'Installation/Konfiguration/Lizensierung Terminal Server',
+      'Migration pro VM auf neue Hosts',
+      'Virtualisierung pro VM (P-2-V/V-2-V)',
+      'Installation, Konfiguration, Test HPDM/UMS',
+      'Installation Backup-Software',
+      'Backup-Konfiguration und Test',
+    ]},
+    { section: 'Client-Anpassungen vor Ort', items: [
+      'Migration pro Client-PC',
+      'Grundkonfiguration pro Client-PC (neuer PC)',
+      'Einrichten Thin-Client',
+    ]},
+    { section: 'Firewall-Anpassungen / Einrichtung vor Ort', items: [
+      'Einrichtung Sonicwall im Netz (Einbau, Einbinden ins Netz, VPN-Zugang, Site-to-Site-VPN)',
+    ]},
+    { section: 'Dokumentation', items: [
+      'Dokumentation inkl. Handout für den Kunden',
+    ]},
   ];
 
-  // Dark Mode Klassen
+  // Map: Beschreibung -> Section (für sauberes Speichern)
+  const DESC_TO_SECTION = useMemo(() => {
+    const m = {};
+    TEMPLATE.forEach(sec => sec.items.forEach(it => { m[it] = sec.section; }));
+    return m;
+  }, []);
+
+  // Styles
   const bgClass = isDark ? 'bg-gray-800' : 'bg-white';
   const borderClass = isDark ? 'border-gray-700' : 'border-gray-200';
   const textClass = isDark ? 'text-gray-100' : 'text-gray-900';
@@ -109,8 +97,7 @@ export default function CalculationSection({
   const tableHeaderClass = isDark ? 'bg-gray-700' : 'bg-gray-50';
   const sumBoxClass = isDark ? 'bg-gray-700' : 'bg-gray-50';
 
-  // --- Accordion State: Sektionen ein/ausklappen ---
-  // Standard: alles zu (komprimiert). Du kannst hier auch einzelne true setzen.
+  // Accordion (initial: alles zu)
   const [openSections, setOpenSections] = useState(() =>
     Object.fromEntries(TEMPLATE.map(s => [s.section, false]))
   );
@@ -121,7 +108,7 @@ export default function CalculationSection({
   const collapseAll = () =>
     setOpenSections(Object.fromEntries(TEMPLATE.map(s => [s.section, false])));
 
-  // --- Seed-Funktionen ---
+  // Seed aus Template
   const buildSeedFromTemplate = () =>
     TEMPLATE.flatMap(sec =>
       sec.items.map(beschreibung => ({
@@ -129,11 +116,11 @@ export default function CalculationSection({
         anzahl: 1,
         dauer_pro_einheit: 0,
         info: '',
-        stundensatz: undefined, // nutzt Default, wenn leer
+        stundensatz: undefined,
+        section: sec.section,
       })),
     );
 
-  // Seed nur, wenn leer oder nur leere Beschreibungen vorhanden
   useEffect(() => {
     setCalculationForm(prev => {
       const needsSeed =
@@ -148,52 +135,87 @@ export default function CalculationSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- Update-Helper: legt Zeile an, falls sie noch nicht existiert ---
+  // Update-Helper
   const updateRow = (beschreibung, patch) => {
     setCalculationForm(prev => {
       const list = [...(prev.dienstleistungen || [])];
       const idx = list.findIndex(x => x.beschreibung === beschreibung);
-
       if (idx === -1) {
-        // neu anlegen
         list.push({
           beschreibung,
           anzahl: 1,
           dauer_pro_einheit: 0,
           info: '',
           stundensatz: undefined,
-          ...patch,
+          section: DESC_TO_SECTION[beschreibung] || null,
+          ...patch
         });
       } else {
         list[idx] = { ...list[idx], ...patch };
       }
-
       return { ...prev, dienstleistungen: list };
     });
   };
 
-  // --- Rechen-Helper ---
+  // Rechnen
   const rowHours = d => (Number(d.dauer_pro_einheit) || 0) * (Number(d.anzahl) || 1);
   const rowRate  = d => Number(d.stundensatz ?? calculationForm.stundensatz) || 0;
   const rowTotal = d => rowHours(d) * rowRate(d);
 
-  const sumNetto = (calculationForm.dienstleistungen || []).reduce((acc, d) => acc + rowTotal(d), 0);
-  const sumMwst  = sumNetto * (Number(mwst) / 100);
+  const sumNetto  = (calculationForm.dienstleistungen || []).reduce((acc, d) => acc + rowTotal(d), 0);
+  const sumMwst   = sumNetto * ((Number(mwst) || 0) / 100);
   const sumBrutto = sumNetto + sumMwst;
 
-  // Zusammenfassung je Sektion (für Kopfzeile)
   const sectionSummary = (sec) => {
-    const rows = (calculationForm.dienstleistungen || [])
-      .filter(d => sec.items.includes(d.beschreibung));
+    const rows = (calculationForm.dienstleistungen || []).filter(d => sec.items.includes(d.beschreibung));
     const count = rows.length;
     const hours = rows.reduce((a, d) => a + rowHours(d), 0);
     const total = rows.reduce((a, d) => a + rowTotal(d), 0);
     return { count, hours, total };
   };
 
+  // Submit: nur Kunde als Pflichtfeld, Rest wird „sanitized“
+  const handleSubmit = (e) => {
+    e.preventDefault();
+
+    if (!calculationForm.kunde_id) {
+      alert('Bitte einen Kunden auswählen');
+      return;
+    }
+
+    const defaultRate =
+      calculationForm.stundensatz === undefined || calculationForm.stundensatz === ''
+        ? null
+        : Number(calculationForm.stundensatz) || 0;
+
+    const sanitized = (calculationForm.dienstleistungen || []).map((row) => ({
+      beschreibung: row.beschreibung,
+      section: row.section || DESC_TO_SECTION[row.beschreibung] || null,
+      anzahl: Number(row.anzahl) || 0,
+      dauer_pro_einheit: Number(row.dauer_pro_einheit) || 0,
+      info: (row.info || '').trim() || null,
+      stundensatz:
+        row.stundensatz === undefined || row.stundensatz === ''
+          ? null
+          : Number(row.stundensatz) || 0,
+    }));
+
+    const payload = {
+      kunde_id: calculationForm.kunde_id,
+      stundensatz: defaultRate,            // darf null sein
+      dienstleistungen: sanitized,         // auch „leere“ Zeilen erlaubt
+      mwst: Number(mwst) || 0,             // falls Backend ignoriert, egal
+    };
+
+    // Parent-Handler mit (event, payload) aufrufen
+    if (typeof onSubmit === 'function') {
+      onSubmit(e, payload);
+    }
+  };
+
   return (
     <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
-      <form onSubmit={onSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-6">
         {/* Kopf */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div>
@@ -214,32 +236,41 @@ export default function CalculationSection({
           </div>
 
           <div>
-            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Standard-Stundensatz (€) *</label>
+            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Standard-Stundensatz (€)</label>
             <input
               type="number"
-              required
-              step="0.01"
-              value={calculationForm.stundensatz}
-              onChange={(e) => setCalculationForm({ ...calculationForm, stundensatz: Number(e.target.value) })}
+              min="0"
+              step="any"
+              value={calculationForm.stundensatz ?? ''}
+              onChange={(e) =>
+                setCalculationForm({
+                  ...calculationForm,
+                  stundensatz: e.target.value === '' ? undefined : Number(e.target.value),
+                })
+              }
               className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-              placeholder="85.00"
+              placeholder="z. B. 85"
             />
-            <p className={`text-xs ${textMutedClass} mt-1`}>Gilt für Zeilen ohne eigenen Satz.</p>
+            <p className={`text-xs ${textMutedClass} mt-1`}>
+              Wird genutzt, wenn in einer Zeile kein eigener Satz steht.
+            </p>
           </div>
 
           <div>
             <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>MwSt (%)</label>
             <input
               type="number"
-              step="0.1"
-              value={mwst}
-              onChange={(e) => setMwst(Number(e.target.value))}
+              min="0"
+              step="any"
+              value={mwst ?? ''}
+              onChange={(e) => setMwst(e.target.value === '' ? 0 : Number(e.target.value))}
               className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+              placeholder="z. B. 19"
             />
           </div>
         </div>
 
-        {/* Steuerung ein/ausklappen */}
+        {/* Steuerung */}
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -257,15 +288,13 @@ export default function CalculationSection({
           </button>
         </div>
 
-        {/* Tabelle (vorlagenbasiert, mit Accordion) */}
+        {/* Sektionen */}
         <div className={`border-t ${borderClass} pt-4`}>
           {TEMPLATE.map((sec) => {
             const open = openSections[sec.section];
             const sum = sectionSummary(sec);
-
             return (
               <div key={sec.section} className={`mb-4 rounded-lg border ${borderClass} ${isDark ? 'bg-gray-900' : 'bg-white'}`}>
-                {/* Sektions-Kopf */}
                 <button
                   type="button"
                   onClick={() => toggleSection(sec.section)}
@@ -286,9 +315,8 @@ export default function CalculationSection({
                   </div>
                 </button>
 
-                {/* Items-Tabelle */}
                 {open && (
-                  <div className="overflow-x-auto border-t ${borderClass}">
+                  <div className={`overflow-x-auto border-t ${borderClass}`}>
                     <table className="w-full text-sm">
                       <thead className={`${tableHeaderClass} border-b ${borderClass}`}>
                         <tr>
@@ -303,10 +331,9 @@ export default function CalculationSection({
                       </thead>
                       <tbody className={`divide-y ${borderClass}`}>
                         {sec.items.map((beschreibung) => {
-                          // passende Zeile im State suchen
                           const row =
                             (calculationForm.dienstleistungen || []).find(d => d.beschreibung === beschreibung) ||
-                            { beschreibung, anzahl: 1, dauer_pro_einheit: 0, info: '', stundensatz: undefined };
+                            { beschreibung, anzahl: 1, dauer_pro_einheit: 0, info: '', stundensatz: undefined, section: DESC_TO_SECTION[beschreibung] || null };
 
                           const hours = rowHours(row);
                           const rate = rowRate(row);
@@ -321,11 +348,10 @@ export default function CalculationSection({
                               <td className="px-4 py-2 text-right">
                                 <input
                                   type="number"
-                                  min="1"
+                                  min="0"
+                                  step="any"
                                   value={row.anzahl}
-                                  onChange={(e) =>
-                                    updateRow(beschreibung, { anzahl: Number(e.target.value) || 0 })
-                                  }
+                                  onChange={(e) => updateRow(beschreibung, { anzahl: Number(e.target.value) || 0 })}
                                   className={`w-24 text-right px-2 py-1 border rounded-md focus:outline-none focus:ring-1 ${inputClass}`}
                                 />
                               </td>
@@ -333,11 +359,10 @@ export default function CalculationSection({
                               <td className="px-4 py-2 text-right">
                                 <input
                                   type="number"
-                                  step="0.25"
+                                  min="0"
+                                  step="any"
                                   value={row.dauer_pro_einheit}
-                                  onChange={(e) =>
-                                    updateRow(beschreibung, { dauer_pro_einheit: Number(e.target.value) || 0 })
-                                  }
+                                  onChange={(e) => updateRow(beschreibung, { dauer_pro_einheit: Number(e.target.value) || 0 })}
                                   className={`w-28 text-right px-2 py-1 border rounded-md focus:outline-none focus:ring-1 ${inputClass}`}
                                 />
                               </td>
@@ -345,7 +370,8 @@ export default function CalculationSection({
                               <td className="px-4 py-2 text-right">
                                 <input
                                   type="number"
-                                  step="0.01"
+                                  min="0"
+                                  step="any"
                                   value={row.stundensatz ?? ''}
                                   onChange={(e) =>
                                     updateRow(
@@ -354,10 +380,10 @@ export default function CalculationSection({
                                     )
                                   }
                                   className={`w-28 text-right px-2 py-1 border rounded-md focus:outline-none focus:ring-1 ${inputClass}`}
-                                  placeholder={String(calculationForm.stundensatz)}
+                                  placeholder={String(calculationForm.stundensatz ?? '')}
                                 />
                                 <p className={`text-[10px] ${textMutedClass} mt-0.5`}>
-                                  leer = {Number(calculationForm.stundensatz).toFixed(2)} €
+                                  leer = {Number(calculationForm.stundensatz || 0).toFixed(2)} €
                                 </p>
                               </td>
 
@@ -400,7 +426,7 @@ export default function CalculationSection({
               </span>
             </div>
             <div className="flex items-center justify-between mt-2">
-              <span className={`text-sm ${textSecondaryClass}`}>MwSt ({mwst}%)</span>
+              <span className={`text-sm ${textSecondaryClass}`}>MwSt ({mwst || 0}%)</span>
               <span className={`font-medium ${textClass}`}>
                 {sumMwst.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
               </span>
