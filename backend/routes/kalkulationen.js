@@ -6,7 +6,7 @@ const router = express.Router();
 // PostgreSQL Connection
 const pool = new Pool({
   user: process.env.DB_USER || 'postgres',
-  host: process.env.DB_HOST || 'localhost',
+  host: process.env.DB_HOST || 'db',
   database: process.env.DB_NAME || 'pauly_db',
   password: process.env.DB_PASSWORD || 'password',
   port: process.env.DB_PORT || 5432,

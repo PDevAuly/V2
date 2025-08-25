@@ -1,8 +1,22 @@
-FROM node:20
+# Backend Build + Runtime
+FROM node:20-alpine
+
+# pg_isready benötigt postgresql-client
+RUN apk add --no-cache postgresql-client
 
 WORKDIR /app
+
+# Nur package*.json zuerst für bessere Layer-Caches
 COPY package*.json ./
-RUN npm install
+
+# Install (prod)
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
+
+# App-Code
 COPY . .
 
-CMD ["node", "server.js"]
+# Entrypoint wartet auf DB und startet dann den Server
+RUN chmod +x /app/entrypoint.sh
+
+EXPOSE 5000
+ENTRYPOINT ["/app/entrypoint.sh"]

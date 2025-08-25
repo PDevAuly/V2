@@ -22,10 +22,9 @@ app.options('*', cors(corsOptions));
 app.use(express.json({ limit: '2mb' }));
 
 /* ===================== DB Connection ===================== */
-// WICHTIG: Default auf localhost (lokal), im Compose kommt PGHOST=db aus env.
 const dbConfig = {
   user: process.env.PGUSER || 'postgres',
-  host: process.env.PGHOST || 'localhost',
+  host: process.env.PGHOST || 'db',
   database: process.env.PGDATABASE || 'postgres',
   password: process.env.PGPASSWORD || 'pauly2026!',
   port: Number(process.env.PGPORT || 5432),
@@ -136,7 +135,7 @@ app.get('/api/customers', async (req, res) => {
         COUNT(DISTINCT o.onboarding_id) AS onboarding_count
       FROM customers c
       LEFT JOIN customer_contacts cc ON cc.kunden_id = c.kunden_id
-      LEFT JOIN onboarding o         ON o.kunde_id  = c.kunden_id
+      LEFT JOIN onboarding o         ON o.kunden_id = c.kunden_id
       GROUP BY c.kunden_id
       ORDER BY c.kunden_id DESC
     `);
@@ -210,6 +209,7 @@ app.get('/api/kalkulationen', async (req, res) => {
         k.stundensatz::float8 AS stundensatz,
         k.gesamtzeit::float8  AS gesamtzeit,
         k.gesamtpreis::float8 AS gesamtpreis,
+        k.mwst_prozent::float8 AS mwst_prozent,
         c.firmenname          AS kunde_name
       FROM kalkulationen k
       LEFT JOIN customers c ON c.kunden_id = k.kunden_id
@@ -295,7 +295,7 @@ app.get('/api/kalkulationen/stats', async (req, res) => {
   try {
     const [kundenCount, aktiveOnb, monatsStunden, monatsUmsatz] = await Promise.all([
       pool.query('SELECT COUNT(*) FROM customers'),
-      pool.query("SELECT COUNT(*) FROM onboarding WHERE status IN ('neu','in Arbeit')"),
+      pool.query('SELECT COUNT(*) FROM onboarding'),
       pool.query(`
         SELECT COALESCE(SUM(gesamtzeit),0)::float8 AS total_hours
         FROM kalkulationen 
@@ -333,17 +333,17 @@ app.post('/api/onboarding', async (req, res) => {
     await client.query('BEGIN');
 
     const ob = await client.query(
-      `INSERT INTO onboarding (datum, status, mitarbeiter_id, kunde_id)
-       VALUES (CURRENT_DATE, 'neu', $1, $2)
+      `INSERT INTO onboarding (kunden_id)
+       VALUES ($1)
        RETURNING onboarding_id`,
-      [mitarbeiter_id || 1, kunde_id]
+      [kunde_id]
     );
     const onboardingId = ob.rows[0].onboarding_id;
 
     if (infrastructure_data.netzwerk) {
       const n = infrastructure_data.netzwerk;
       await client.query(
-        `INSERT INTO onboarding_network
+        `INSERT INTO onboarding_netzwerk
            (onboarding_id, internetzugangsart, firewall_modell, feste_ip_vorhanden,
             ip_adresse, vpn_einwahl_erforderlich, aktuelle_vpn_user, geplante_vpn_user, informationen)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
@@ -509,7 +509,6 @@ app.use('*', (req, res) => {
       '/api/auth/register',
       '/api/customers',
       '/api/kalkulationen',
-      '/api/kalkulationen (POST)',
       '/api/kalkulationen/stats',
       '/api/onboarding',
     ],

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  User, Clock, Settings, RotateCcw, Calculator, TrendingUp, Network, ChevronRight,
+  User, Clock, RotateCcw, Calculator, TrendingUp, Network, ChevronRight,
   Sun, Moon, X, Save, Eye, EyeOff, Edit3
 } from 'lucide-react';
 import OnboardingSection from '../features/onboarding/OnboardingSection.jsx';
@@ -25,16 +25,16 @@ export default function Dashboard({ onLogout, userInfo }) {
     showConfirmPassword: false,
   });
 
-  // API_BASE vereinfacht - verwendet Proxy
+  // Alle Requests gehen relativ an /api → Nginx proxyt zum Backend
   const API_BASE = '/api';
-
   const euro = (n) =>
     new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(Number(n || 0));
 
-  // Vereinfachte getJson Funktion
-  const getJson = async (res) => {
+  const fetchJSON = async (path, init) => {
+    const res = await fetch(`${API_BASE}${path}`, init);
     if (!res.ok) {
-      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      const errorText = await res.text().catch(() => '');
+      throw new Error(`${res.status} ${res.statusText}${errorText ? ': ' + errorText : ''}`);
     }
     return res.json();
   };
@@ -124,67 +124,39 @@ export default function Dashboard({ onLogout, userInfo }) {
   }, []);
 
   const loadDashboardData = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      
-      // Teste zuerst die Verbindung
-      const testRes = await fetch(`${API_BASE}/test`);
-      if (!testRes.ok) throw new Error('Backend nicht erreichbar');
-
-      const [statsRes, customersRes, kalkulationenRes] = await Promise.all([
-        fetch(`${API_BASE}/kalkulationen/stats`),
-        fetch(`${API_BASE}/customers`),
-        fetch(`${API_BASE}/kalkulationen`),
+      const [statsP, customersP, kalkP] = await Promise.allSettled([
+        fetchJSON('/kalkulationen/stats'),
+        fetchJSON('/customers'),
+        fetchJSON('/kalkulationen'),
       ]);
 
-      // Check if responses are ok
-      if (!statsRes.ok) throw new Error('Stats endpoint failed');
-      if (!customersRes.ok) throw new Error('Customers endpoint failed');
-      if (!kalkulationenRes.ok) throw new Error('Kalkulationen endpoint failed');
+      if (statsP.status === 'fulfilled') {
+        const s = statsP.value || {};
+        setStats({
+          activeCustomers: Number(s.activeCustomers ?? 0),
+          monthlyHours: Number(s.monthlyHours ?? s.avg_zeit ?? 0),
+          monthlyRevenue: Number(s.monthlyRevenue ?? s.total_umsatz ?? 0),
+        });
+      } else {
+        console.warn('Stats failed:', statsP.reason);
+        setStats({ activeCustomers: 0, monthlyHours: 0, monthlyRevenue: 0 });
+      }
 
-      const [statsData, customersData, kalkulationenData] = await Promise.all([
-        statsRes.json(),
-        customersRes.json(),
-        kalkulationenRes.json(),
-      ]);
+      if (customersP.status === 'fulfilled') {
+        setCustomers(Array.isArray(customersP.value) ? customersP.value : []);
+      } else {
+        console.warn('Customers failed:', customersP.reason);
+        setCustomers([]);
+      }
 
-      const mappedStats = {
-        activeCustomers: Array.isArray(customersData) ? customersData.length : 0,
-        monthlyHours: Number(statsData?.monthlyHours || statsData?.avg_zeit || 0),
-        monthlyRevenue: Number(statsData?.monthlyRevenue || statsData?.total_umsatz || 0),
-      };
-
-      setStats(mappedStats);
-      setCustomers(customersData ?? []);
-      setKalkulationen(kalkulationenData ?? []);
-      
-    } catch (error) {
-      console.warn('Fallback auf Mock-Daten:', error);
-      // Setze sinnvolle Mock-Daten als Fallback
-      setStats({
-        activeCustomers: 12,
-        monthlyHours: 85,
-        monthlyRevenue: 7225,
-      });
-      setCustomers([{
-        kunden_id: 1,
-        firmenname: 'Beispielkunde GmbH',
-        email: 'info@beispiel.de',
-        strasse: 'Musterstraße',
-        hausnummer: '123',
-        ort: 'Musterstadt',
-        plz: '12345',
-        telefonnummer: '0123456789'
-      }]);
-      setKalkulationen([{
-        kalkulations_id: 1,
-        kunde_name: 'Beispielkunde GmbH',
-        datum: new Date().toISOString(),
-        gesamtzeit: 8,
-        gesamtpreis: 680,
-        status: 'neu',
-        stundensatz: 85
-      }]);
+      if (kalkP.status === 'fulfilled') {
+        setKalkulationen(Array.isArray(kalkP.value) ? kalkP.value : []);
+      } else {
+        console.warn('Kalkulationen failed:', kalkP.reason);
+        setKalkulationen([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -192,17 +164,17 @@ export default function Dashboard({ onLogout, userInfo }) {
 
   const changePassword = async () => {
     if (passwordData.newPassword !== passwordData.confirmPassword) {
-      alert('❌ Die neuen Passwörter stimmen nicht überein');
+      alert('Die neuen Passwörter stimmen nicht überein');
       return;
     }
     if (passwordData.newPassword.length < 6) {
-      alert('❌ Das neue Passwort muss mindestens 6 Zeichen lang sein');
+      alert('Das neue Passwort muss mindestens 6 Zeichen lang sein');
       return;
     }
     try {
       setLoading(true);
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      alert('✅ Passwort erfolgreich geändert!');
+      alert('Passwort erfolgreich geändert!');
       setPasswordData({
         currentPassword: '',
         newPassword: '',
@@ -213,7 +185,7 @@ export default function Dashboard({ onLogout, userInfo }) {
       });
     } catch (error) {
       console.error('Fehler beim Ändern des Passworts:', error);
-      alert('❌ Fehler beim Ändern des Passworts');
+      alert('Fehler beim Ändern des Passworts');
     } finally {
       setLoading(false);
     }
@@ -222,36 +194,64 @@ export default function Dashboard({ onLogout, userInfo }) {
   const handleFinalOnboardingSubmit = async () => {
     setLoading(true);
     try {
-      const customerResponse = await fetch(`${API_BASE}/customers`, {
+      // Debug: Logge die Daten die gesendet werden sollen
+      console.log('DEBUG: onboardingCustomerData:', onboardingCustomerData);
+      console.log('DEBUG: firmenname:', onboardingCustomerData.firmenname);
+      console.log('DEBUG: email:', onboardingCustomerData.email);
+      
+      // Validierung vor dem Senden
+      if (!onboardingCustomerData.firmenname || !onboardingCustomerData.firmenname.trim()) {
+        alert('Firmenname ist ein Pflichtfeld');
+        setLoading(false);
+        return;
+      }
+      
+      if (!onboardingCustomerData.email || !onboardingCustomerData.email.trim()) {
+        alert('E-Mail ist ein Pflichtfeld');
+        setLoading(false);
+        return;
+      }
+      
+      // E-Mail Format validierung (basic)
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(onboardingCustomerData.email.trim())) {
+        alert('Bitte geben Sie eine gültige E-Mail-Adresse ein');
+        setLoading(false);
+        return;
+      }
+
+      console.log('DEBUG: Sending customer data:', JSON.stringify(onboardingCustomerData, null, 2));
+      
+      const customerResult = await fetchJSON('/customers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(onboardingCustomerData),
       });
       
-      if (!customerResponse.ok) {
-        const errorData = await customerResponse.text();
-        throw new Error(`Fehler beim Erstellen des Kunden: ${errorData}`);
+      console.log('DEBUG: Customer created:', customerResult);
+      
+      const kundeId = customerResult.kunde?.kunden_id || customerResult.kunden_id;
+      
+      if (!kundeId) {
+        throw new Error('Keine Kunden-ID vom Backend erhalten');
       }
       
-      const customerResult = await customerResponse.json();
-      const kundeId = customerResult.kunde?.kunden_id || customerResult.kunden_id;
+      console.log('DEBUG: Using customer ID:', kundeId);
+      console.log('DEBUG: Sending infrastructure data:', JSON.stringify(infrastructureData, null, 2));
 
-      const onboardingResponse = await fetch(`${API_BASE}/onboarding`, {
+      await fetchJSON('/onboarding', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          kunde_id: kundeId, 
-          infrastructure_data: infrastructureData 
+        body: JSON.stringify({
+          kunde_id: kundeId,
+          infrastructure_data: infrastructureData,
         }),
       });
-      
-      if (!onboardingResponse.ok) {
-        const errorData = await onboardingResponse.text();
-        throw new Error(`Fehler beim Erstellen des Onboardings: ${errorData}`);
-      }
 
-      alert('✅ Kunde und IT-Infrastruktur erfolgreich erfasst!');
+      alert('Kunde und IT-Infrastruktur erfolgreich erfasst!');
       setCurrentOnboardingStep(1);
+      
+      // Reset der Formulardaten
       setOnboardingCustomerData({
         firmenname: '',
         strasse: '',
@@ -262,6 +262,7 @@ export default function Dashboard({ onLogout, userInfo }) {
         email: '',
         ansprechpartner: { name: '', vorname: '', email: '', telefonnummer: '', position: '' },
       });
+      
       setInfrastructureData({
         netzwerk: {
           internetzugangsart: '',
@@ -313,10 +314,11 @@ export default function Dashboard({ onLogout, userInfo }) {
           text: '',
         },
       });
+      
       loadDashboardData();
     } catch (error) {
-      console.error('Error:', error);
-      alert('❌ Fehler beim Speichern: ' + error.message);
+      console.error('Error in handleFinalOnboardingSubmit:', error);
+      alert('Fehler beim Speichern: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -334,36 +336,29 @@ export default function Dashboard({ onLogout, userInfo }) {
     try {
       const payload = {
         kunde_id: calculationForm.kunde_id,
-        stundensatz: calculationForm.stundensatz === '' || calculationForm.stundensatz === undefined
-          ? null
-          : Number(calculationForm.stundensatz) || 0,
-        mwst: Number(mwst) || 0,
+        stundensatz:
+          calculationForm.stundensatz === '' || calculationForm.stundensatz === undefined
+            ? null
+            : Number(calculationForm.stundensatz) || 0,
+        mwst_prozent: Number(mwst) || 0,
         dienstleistungen: (calculationForm.dienstleistungen || []).map((d) => ({
           beschreibung: d.beschreibung,
           section: d.section ?? null,
           anzahl: Number(d.anzahl) || 0,
           dauer_pro_einheit: Number(d.dauer_pro_einheit) || 0,
           info: (d.info || '').trim() || null,
-          stundensatz: d.stundensatz === undefined || d.stundensatz === ''
-            ? null
-            : Number(d.stundensatz) || 0,
+          stundensatz:
+            d.stundensatz === undefined || d.stundensatz === '' ? null : Number(d.stundensatz) || 0,
         })),
       };
 
-      const response = await fetch(`${API_BASE}/kalkulationen`, {
+      await fetchJSON('/kalkulationen', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
-      if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(errorData || 'Unbekannter Fehler');
-      }
-
-      const data = await response.json();
-      alert('✅ Kalkulation wurde erfolgreich erstellt!');
-      
+      alert('Kalkulation wurde erfolgreich erstellt!');
       setCalculationForm({
         kunde_id: '',
         stundensatz: 85,
@@ -372,7 +367,7 @@ export default function Dashboard({ onLogout, userInfo }) {
       await loadDashboardData();
     } catch (error) {
       console.error('Error creating calculation:', error);
-      alert('❌ Fehler beim Erstellen der Kalkulation: ' + error.message);
+      alert('Fehler beim Erstellen der Kalkulation: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -383,9 +378,6 @@ export default function Dashboard({ onLogout, userInfo }) {
     { id: 'onboarding', label: 'Kunden-Onboarding', icon: Network, color: 'text-purple-600 dark:text-purple-400' },
     { id: 'stundenkalkulation', label: 'Stundenkalkulation', icon: Calculator, color: 'text-orange-600 dark:text-orange-400' },
   ];
-
-  // ... rest of the code remains the same (renderProfileModal, renderContent, return statement) ...
-  // Der restliche Code bleibt unverändert
 
   const renderProfileModal = () => (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
@@ -407,7 +399,6 @@ export default function Dashboard({ onLogout, userInfo }) {
             </div>
           </div>
 
-          {/* E-Mail anzeigen (nicht editierbar) */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Angemeldet als
@@ -556,14 +547,14 @@ export default function Dashboard({ onLogout, userInfo }) {
               </p>
             </div>
 
-            {/* Projekte-Kachel entfernt (nur 3 Kacheln) */}
+            {/* Nur 3 Kacheln (Projekte entfernt) */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {[
                 { icon: User, bg: 'bg-blue-500', label: 'Kunden', value: stats.activeCustomers },
                 {
                   icon: Clock,
                   bg: 'bg-orange-500',
-                  label: 'Stunden (Ø/Monat)',
+                  label: 'Stunden (Monat)',
                   value: Math.round(stats.monthlyHours) + 'h',
                 },
                 { icon: TrendingUp, bg: 'bg-purple-500', label: 'Umsatz (Monat)', value: euro(stats.monthlyRevenue) },
@@ -644,6 +635,13 @@ export default function Dashboard({ onLogout, userInfo }) {
                         </td>
                       </tr>
                     ))}
+                    {kalkulationen.length === 0 && (
+                      <tr>
+                        <td colSpan="5" className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                          Keine Kalkulationen vorhanden.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
