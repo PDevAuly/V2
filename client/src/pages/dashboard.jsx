@@ -1,3 +1,4 @@
+// src/pages/dashboard.jsx
 import React, { useState, useEffect } from 'react';
 import {
   User, Clock, RotateCcw, Calculator, TrendingUp, Network, ChevronRight,
@@ -37,6 +38,27 @@ export default function Dashboard({ onLogout, userInfo }) {
       throw new Error(`${res.status} ${res.statusText}${errorText ? ': ' + errorText : ''}`);
     }
     return res.json();
+  };
+
+  // --- E-Mail-Versand nach erfolgreichem Onboarding ---
+  const handleSendEmail = async (onboardingId) => {
+    const recipients = window.prompt('E-Mail-Adressen (komma-getrennt):');
+    if (!recipients) return;
+
+    try {
+      await fetchJSON(`/onboarding/${onboardingId}/send-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email_addresses: recipients.split(',').map(s => s.trim()).filter(Boolean),
+          subject: `Onboarding-Daten: ${onboardingCustomerData.firmenname || 'Kunde'}`,
+          message: 'Im Anhang finden Sie die IT-Infrastruktur-Daten.'
+        })
+      });
+      alert('E-Mail erfolgreich versendet!');
+    } catch (error) {
+      alert('Fehler beim E-Mail-Versand: ' + error.message);
+    }
   };
 
   // Daten-States (Projekte entfernt)
@@ -194,25 +216,17 @@ export default function Dashboard({ onLogout, userInfo }) {
   const handleFinalOnboardingSubmit = async () => {
     setLoading(true);
     try {
-      // Debug: Logge die Daten die gesendet werden sollen
-      console.log('DEBUG: onboardingCustomerData:', onboardingCustomerData);
-      console.log('DEBUG: firmenname:', onboardingCustomerData.firmenname);
-      console.log('DEBUG: email:', onboardingCustomerData.email);
-      
-      // Validierung vor dem Senden
-      if (!onboardingCustomerData.firmenname || !onboardingCustomerData.firmenname.trim()) {
+      // Vorvalidierung
+      if (!onboardingCustomerData.firmenname?.trim()) {
         alert('Firmenname ist ein Pflichtfeld');
         setLoading(false);
         return;
       }
-      
-      if (!onboardingCustomerData.email || !onboardingCustomerData.email.trim()) {
+      if (!onboardingCustomerData.email?.trim()) {
         alert('E-Mail ist ein Pflichtfeld');
         setLoading(false);
         return;
       }
-      
-      // E-Mail Format validierung (basic)
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(onboardingCustomerData.email.trim())) {
         alert('Bitte geben Sie eine gültige E-Mail-Adresse ein');
@@ -220,26 +234,18 @@ export default function Dashboard({ onLogout, userInfo }) {
         return;
       }
 
-      console.log('DEBUG: Sending customer data:', JSON.stringify(onboardingCustomerData, null, 2));
-      
+      // 1) Kunde anlegen
       const customerResult = await fetchJSON('/customers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(onboardingCustomerData),
       });
-      
-      console.log('DEBUG: Customer created:', customerResult);
-      
-      const kundeId = customerResult.kunde?.kunden_id || customerResult.kunden_id;
-      
-      if (!kundeId) {
-        throw new Error('Keine Kunden-ID vom Backend erhalten');
-      }
-      
-      console.log('DEBUG: Using customer ID:', kundeId);
-      console.log('DEBUG: Sending infrastructure data:', JSON.stringify(infrastructureData, null, 2));
 
-      await fetchJSON('/onboarding', {
+      const kundeId = customerResult?.kunde?.kunden_id || customerResult?.kunden_id;
+      if (!kundeId) throw new Error('Keine Kunden-ID vom Backend erhalten');
+
+      // 2) Onboarding speichern
+      const obResult = await fetchJSON('/onboarding', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -248,10 +254,20 @@ export default function Dashboard({ onLogout, userInfo }) {
         }),
       });
 
+      const onboardingId = obResult?.onboarding_id || obResult?.onboardingId;
+
       alert('Kunde und IT-Infrastruktur erfolgreich erfasst!');
+
+      // 3) Optional: E-Mail-Versand anbieten (BEVOR wir die Form zurücksetzen)
+      if (onboardingId) {
+        const shouldSend = window.confirm('Möchten Sie die Onboarding-Daten per E-Mail versenden?');
+        if (shouldSend) {
+          await handleSendEmail(onboardingId);
+        }
+      }
+
+      // 4) Formulare zurücksetzen
       setCurrentOnboardingStep(1);
-      
-      // Reset der Formulardaten
       setOnboardingCustomerData({
         firmenname: '',
         strasse: '',
@@ -262,7 +278,6 @@ export default function Dashboard({ onLogout, userInfo }) {
         email: '',
         ansprechpartner: { name: '', vorname: '', email: '', telefonnummer: '', position: '' },
       });
-      
       setInfrastructureData({
         netzwerk: {
           internetzugangsart: '',
@@ -314,8 +329,9 @@ export default function Dashboard({ onLogout, userInfo }) {
           text: '',
         },
       });
-      
-      loadDashboardData();
+
+      // 5) Dashboard-Daten aktualisieren
+      await loadDashboardData();
     } catch (error) {
       console.error('Error in handleFinalOnboardingSubmit:', error);
       alert('Fehler beim Speichern: ' + error.message);

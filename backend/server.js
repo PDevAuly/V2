@@ -2,6 +2,7 @@
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
+const nodemailer = require('nodemailer');
 require('dotenv').config();
 
 const app = express();
@@ -46,6 +47,19 @@ pool.connect((err, client, release) => {
   }
 });
 
+/* ===================== E-Mail Konfiguration ===================== */
+const emailConfig = {
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: process.env.SMTP_PORT || 587,
+  secure: false,
+  auth: {
+    user: process.env.SMTP_USER || 'deine-email@gmail.com',
+    pass: process.env.SMTP_PASS || 'dein-app-passwort'
+  }
+};
+
+const transporter = nodemailer.createTransport(emailConfig);
+
 /* ===================== Helpers ===================== */
 const toNumberOrNull = (v) =>
   v === '' || v === undefined || v === null ? null : Number(v);
@@ -57,6 +71,126 @@ const normalizeJSONB = (val) => {
     try { return JSON.parse(val); } catch { return { text: val }; }
   }
   return { value: val };
+};
+
+// Funktion: Vollständige Onboarding-Daten abrufen
+const getFullOnboardingData = async (onboardingId) => {
+  try {
+    // Hauptdaten
+    const mainQuery = await pool.query(`
+      SELECT 
+        o.*,
+        c.firmenname, c.email as kunde_email, c.strasse, c.hausnummer, 
+        c.plz, c.ort, c.telefonnummer as kunde_telefon,
+        cc.vorname as ansprechpartner_vorname, cc.name as ansprechpartner_name,
+        cc.position, cc.email as ansprechpartner_email, cc.telefonnummer as ansprechpartner_telefon
+      FROM onboarding o
+      LEFT JOIN customers c ON o.kunden_id = c.kunden_id
+      LEFT JOIN customer_contacts cc ON c.kunden_id = cc.kunden_id
+      WHERE o.onboarding_id = $1
+    `, [onboardingId]);
+
+    if (!mainQuery.rows.length) {
+      throw new Error('Onboarding nicht gefunden');
+    }
+
+    const main = mainQuery.rows[0];
+    
+    // Netzwerk-Daten
+    const netzwerk = await pool.query(
+      'SELECT * FROM onboarding_netzwerk WHERE onboarding_id = $1',
+      [onboardingId]
+    );
+
+    // Hardware-Daten
+    const hardware = await pool.query(
+      'SELECT * FROM onboarding_hardware WHERE onboarding_id = $1',
+      [onboardingId]
+    );
+
+    // Mail-Daten
+    const mail = await pool.query(
+      'SELECT * FROM onboarding_mail WHERE onboarding_id = $1',
+      [onboardingId]
+    );
+
+    // Software-Daten mit Requirements und Apps
+    const software = await pool.query(
+      'SELECT * FROM onboarding_software WHERE onboarding_id = $1',
+      [onboardingId]
+    );
+
+    let softwareData = null;
+    if (software.rows.length) {
+      const requirements = await pool.query(
+        'SELECT type, detail FROM onboarding_software_requirements WHERE software_id = $1',
+        [software.rows[0].software_id]
+      );
+
+      const apps = await pool.query(
+        'SELECT name FROM onboarding_software_apps WHERE software_id = $1',
+        [software.rows[0].software_id]
+      );
+
+      softwareData = {
+        ...software.rows[0],
+        requirements: requirements.rows,
+        apps: apps.rows.map(app => app.name)
+      };
+    }
+
+    // Backup-Daten
+    const backup = await pool.query(
+      'SELECT * FROM onboarding_backup WHERE onboarding_id = $1',
+      [onboardingId]
+    );
+
+    // Sonstiges
+    const sonstiges = await pool.query(
+      'SELECT * FROM onboarding_sonstiges WHERE onboarding_id = $1',
+      [onboardingId]
+    );
+
+    // Zusammenfassen
+    return {
+      onboarding_info: {
+        id: main.onboarding_id,
+        datum: main.created_at,
+        bearbeiter: 'System'
+      },
+      kunde: {
+        firmenname: main.firmenname,
+        adresse: {
+          strasse: main.strasse,
+          hausnummer: main.hausnummer,
+          plz: main.plz,
+          ort: main.ort
+        },
+        kontakt: {
+          email: main.kunde_email,
+          telefon: main.kunde_telefon
+        },
+        ansprechpartner: {
+          name: `${main.ansprechpartner_vorname || ''} ${main.ansprechpartner_name || ''}`.trim(),
+          position: main.position,
+          email: main.ansprechpartner_email,
+          telefon: main.ansprechpartner_telefon
+        }
+      },
+      it_infrastruktur: {
+        netzwerk: netzwerk.rows[0] || null,
+        hardware: hardware.rows || [],
+        mail: mail.rows[0] || null,
+        software: softwareData,
+        backup: backup.rows[0] || null,
+        sonstiges: sonstiges.rows.map(s => s.text) || []
+      },
+      export_datum: new Date().toISOString()
+    };
+
+  } catch (error) {
+    throw new Error(`Fehler beim Abrufen der Onboarding-Daten: ${error.message}`);
+  }
 };
 
 /* ===================== Health / Test ===================== */
@@ -488,6 +622,43 @@ app.post('/api/onboarding', async (req, res) => {
     }
 
     await client.query('COMMIT');
+    
+    // OPTIONAL: Automatischer E-Mail-Versand
+    if (process.env.AUTO_SEND_EMAIL === 'true') {
+      try {
+        const defaultEmails = (process.env.DEFAULT_RECIPIENTS || '').split(',').filter(Boolean);
+        if (defaultEmails.length) {
+          // Kundendaten für E-Mail holen
+          const customerData = await pool.query(
+            'SELECT firmenname FROM customers WHERE kunden_id = $1',
+            [kunde_id]
+          );
+          
+          if (customerData.rows.length) {
+            // Kurz warten, dann E-Mail senden
+            setTimeout(async () => {
+              try {
+                const response = await fetch(`http://localhost:${process.env.PORT || 5000}/api/onboarding/${onboardingId}/send-email`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    email_addresses: defaultEmails,
+                    subject: `Neues Onboarding abgeschlossen: ${customerData.rows[0].firmenname}`,
+                    message: 'Ein neues Kunden-Onboarding wurde soeben abgeschlossen.'
+                  })
+                });
+                console.log('Auto-E-Mail versendet');
+              } catch (emailError) {
+                console.error('Auto-E-Mail Fehler:', emailError);
+              }
+            }, 2000);
+          }
+        }
+      } catch (error) {
+        console.warn('Auto-E-Mail Setup Fehler:', error);
+      }
+    }
+
     res.status(201).json({ message: 'Onboarding gespeichert', onboarding_id: onboardingId });
   } catch (e) {
     await client.query('ROLLBACK');
@@ -495,6 +666,87 @@ app.post('/api/onboarding', async (req, res) => {
     res.status(500).json({ error: 'Fehler beim Speichern des Onboardings: ' + e.message });
   } finally {
     client.release();
+  }
+});
+
+// API-Endpoint: JSON generieren und per E-Mail senden
+app.post('/api/onboarding/:id/send-email', async (req, res) => {
+  try {
+    const onboardingId = parseInt(req.params.id);
+    const { email_addresses, subject, message } = req.body;
+
+    if (!email_addresses || !Array.isArray(email_addresses)) {
+      return res.status(400).json({ error: 'E-Mail-Adressen sind erforderlich' });
+    }
+
+    // Onboarding-Daten abrufen
+    const onboardingData = await getFullOnboardingData(onboardingId);
+    
+    // JSON-Datei erstellen
+    const jsonContent = JSON.stringify(onboardingData, null, 2);
+    const fileName = `onboarding_${onboardingData.kunde.firmenname.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.json`;
+
+    // E-Mail senden
+    const mailOptions = {
+      from: process.env.SMTP_FROM || emailConfig.auth.user,
+      to: email_addresses.join(', '),
+      subject: subject || `Onboarding-Daten: ${onboardingData.kunde.firmenname}`,
+      html: `
+        <h2>Onboarding-Daten für ${onboardingData.kunde.firmenname}</h2>
+        
+        ${message ? `<p>${message}</p>` : ''}
+        
+        <h3>Zusammenfassung:</h3>
+        <ul>
+          <li><strong>Kunde:</strong> ${onboardingData.kunde.firmenname}</li>
+          <li><strong>Bearbeitet am:</strong> ${new Date(onboardingData.onboarding_info.datum).toLocaleDateString('de-DE')}</li>
+          <li><strong>Hardware-Komponenten:</strong> ${onboardingData.it_infrastruktur.hardware.length}</li>
+          <li><strong>Software erfasst:</strong> ${onboardingData.it_infrastruktur.software ? 'Ja' : 'Nein'}</li>
+        </ul>
+        
+        <p>Die vollständigen Daten finden Sie im Anhang als JSON-Datei.</p>
+        
+        <hr>
+        <p><em>Automatisch generiert durch das Pauly Dashboard</em></p>
+      `,
+      attachments: [
+        {
+          filename: fileName,
+          content: jsonContent,
+          contentType: 'application/json'
+        }
+      ]
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    res.json({ 
+      message: 'E-Mail erfolgreich versendet',
+      recipients: email_addresses,
+      filename: fileName
+    });
+
+  } catch (error) {
+    console.error('E-Mail Versand Fehler:', error);
+    res.status(500).json({ error: `Fehler beim E-Mail-Versand: ${error.message}` });
+  }
+});
+
+// API-Endpoint: Nur JSON herunterladen
+app.get('/api/onboarding/:id/export', async (req, res) => {
+  try {
+    const onboardingId = parseInt(req.params.id);
+    const onboardingData = await getFullOnboardingData(onboardingId);
+    
+    const fileName = `onboarding_${onboardingData.kunde.firmenname.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.json`;
+    
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.send(JSON.stringify(onboardingData, null, 2));
+
+  } catch (error) {
+    console.error('Export Fehler:', error);
+    res.status(500).json({ error: `Fehler beim Export: ${error.message}` });
   }
 });
 
@@ -511,6 +763,8 @@ app.use('*', (req, res) => {
       '/api/kalkulationen',
       '/api/kalkulationen/stats',
       '/api/onboarding',
+      '/api/onboarding/:id/send-email',
+      '/api/onboarding/:id/export'
     ],
   });
 });
