@@ -1,22 +1,20 @@
-# Backend Build + Runtime
-FROM node:20-alpine
-
-# pg_isready benötigt postgresql-client
-RUN apk add --no-cache postgresql-client
-
+FROM node:20-alpine AS build
 WORKDIR /app
 
-# Nur package*.json zuerst für bessere Layer-Caches
+RUN apk add --no-cache python3 make g++ \
+ && npm config set fund false \
+ && npm config set audit false
+
 COPY package*.json ./
+RUN --mount=type=cache,target=/root/.npm \
+    if [ -f package-lock.json ]; then \
+      npm ci --verbose || npm install --legacy-peer-deps --verbose; \
+    else \
+      npm install --legacy-peer-deps --verbose; \
+    fi
 
-# Install (prod)
-RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
-
-# App-Code
 COPY . .
-
-# Entrypoint wartet auf DB und startet dann den Server
-RUN chmod +x /app/entrypoint.sh
+RUN npm run build || echo "no backend build step"
 
 EXPOSE 5000
-ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["node", "server.js"]
