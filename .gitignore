@@ -13,5 +13,3 @@ dist/
 npm-debug.log*
 
 # Docker volumes/sockets
-*.pid
-*.sock
