@@ -4,6 +4,10 @@ const cors = require('cors');
 const { Pool } = require('pg');
 const nodemailer = require('nodemailer');
 require('dotenv').config();
+const speakeasy = require('speakeasy');
+const QRCode = require('qrcode');
+
+const MFA_ISSUER = process.env.MFA_ISSUER || 'Pauly Dashboard';
 
 const app = express();
 
@@ -223,16 +227,33 @@ app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, passwort } = req.body;
     const r = await pool.query(
-      'SELECT mitarbeiter_id, name, vorname, email, rolle, passwort FROM mitarbeiter WHERE email=$1',
+      'SELECT mitarbeiter_id, name, vorname, email, rolle, passwort, mfa_enabled FROM mitarbeiter WHERE email = $1',
       [email]
     );
     if (!r.rows.length) return res.status(401).json({ error: 'Benutzer nicht gefunden' });
     const u = r.rows[0];
     if (u.passwort !== passwort) return res.status(401).json({ error: 'Falsches Passwort' });
 
+    if (u.mfa_enabled) {
+      // Passwort ok, MFA erforderlich
+      return res.status(200).json({
+        status: 'MFA_REQUIRED',
+        user_id: u.mitarbeiter_id,
+        email: u.email
+      });
+    }
+
+    // Kein MFA -> direkt einloggen
     res.json({
       message: 'Login erfolgreich',
-      user: { id: u.mitarbeiter_id, name: u.name, vorname: u.vorname, email: u.email, rolle: u.rolle },
+      user: {
+        id: u.mitarbeiter_id,
+        name: u.name,
+        vorname: u.vorname,
+        email: u.email,
+        rolle: u.rolle,
+        mfa_enabled: !!u.mfa_enabled
+      },
     });
   } catch (e) {
     console.error('Login Error:', e);
@@ -258,6 +279,162 @@ app.post('/api/auth/register', async (req, res) => {
     res.status(500).json({ error: 'Fehler bei der Registrierung' });
   }
 });
+
+// MFA-Setup starten: erwartet { user_id }
+app.post('/api/auth/mfa/setup/start', async (req, res) => {
+  try {
+    const { user_id } = req.body;
+    if (!user_id) return res.status(400).json({ error: 'user_id ist erforderlich' });
+
+    const u = await pool.query(
+      'SELECT mitarbeiter_id, email FROM mitarbeiter WHERE mitarbeiter_id = $1',
+      [user_id]
+    );
+    if (!u.rows.length) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+
+    const email = u.rows[0].email;
+
+    // Secret erzeugen (Base32) + otpauth URL
+    const secret = speakeasy.generateSecret({
+      length: 20,
+      name: `${MFA_ISSUER}:${email}`,
+      issuer: MFA_ISSUER
+    });
+
+    // Manche speakeasy-Versionen setzen otpauth_url, ansonsten sicherstellen:
+    const otpauth = secret.otpauth_url || speakeasy.otpauthURL({
+      secret: secret.base32,
+      label: `${MFA_ISSUER}:${email}`,
+      issuer: MFA_ISSUER,
+      encoding: 'base32'
+    });
+
+    // QR-Code als DataURL
+    const qrDataUrl = await QRCode.toDataURL(otpauth);
+
+    // Temporäres Secret speichern, bis Nutzer Code verifiziert
+    await pool.query(
+      'UPDATE mitarbeiter SET mfa_temp_secret=$1 WHERE mitarbeiter_id=$2',
+      [secret.base32, user_id]
+    );
+
+    res.json({ otpauth, qrDataUrl });
+  } catch (e) {
+    console.error('MFA setup start error:', e);
+    res.status(500).json({ error: 'Fehler beim Starten des MFA-Setups' });
+  }
+});
+
+function generateBackupCodes(n = 8) {
+  const out = [];
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  for (let i = 0; i < n; i++) {
+    let c = '';
+    for (let j = 0; j < 10; j++) c += alphabet[Math.floor(Math.random() * alphabet.length)];
+    out.push(c.slice(0,5) + '-' + c.slice(5));
+  }
+  return out;
+}
+
+app.post('/api/auth/mfa/setup/verify', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { user_id, token } = req.body;
+    if (!user_id || !token) return res.status(400).json({ error: 'user_id und token sind erforderlich' });
+
+    const r = await client.query(
+      'SELECT mfa_temp_secret FROM mitarbeiter WHERE mitarbeiter_id=$1',
+      [user_id]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+
+    const tempSecret = r.rows[0].mfa_temp_secret;
+    if (!tempSecret) return res.status(400).json({ error: 'Kein temporäres Secret vorhanden' });
+
+    const ok = speakeasy.totp.verify({
+      secret: tempSecret,
+      encoding: 'base32',
+      token: String(token),
+      window: 1 // leichte Zeitdrift erlauben
+    });
+
+    if (!ok) return res.status(400).json({ error: 'Ungültiger Code' });
+
+    const backupCodes = generateBackupCodes();
+
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE mitarbeiter
+         SET mfa_secret=$1, mfa_temp_secret=NULL, mfa_enabled=true, mfa_enrolled_at=NOW(), mfa_backup_codes=$2
+       WHERE mitarbeiter_id=$3`,
+      [tempSecret, backupCodes, user_id]
+    );
+    await client.query('COMMIT');
+
+    res.json({ success: true, backup_codes: backupCodes }); // nur jetzt einmalig anzeigen
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error('MFA setup verify error:', e);
+    res.status(500).json({ error: 'Fehler beim Verifizieren des MFA-Setups' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/auth/mfa/verify', async (req, res) => {
+  try {
+    const { user_id, token, backup_code } = req.body;
+    if (!user_id) return res.status(400).json({ error: 'user_id ist erforderlich' });
+
+    const r = await pool.query(
+      'SELECT mitarbeiter_id, name, vorname, email, rolle, mfa_secret, mfa_enabled, mfa_backup_codes FROM mitarbeiter WHERE mitarbeiter_id=$1',
+      [user_id]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+    const u = r.rows[0];
+    if (!u.mfa_enabled) return res.status(400).json({ error: 'MFA ist nicht aktiviert' });
+
+    let verified = false;
+
+    if (token) {
+      verified = speakeasy.totp.verify({
+        secret: u.mfa_secret,
+        encoding: 'base32',
+        token: String(token),
+        window: 1
+      });
+    } else if (backup_code) {
+      const idx = (u.mfa_backup_codes || []).findIndex(c => c === backup_code);
+      if (idx >= 0) {
+        const newCodes = [...u.mfa_backup_codes];
+        newCodes.splice(idx, 1); // verbrauchen
+        await pool.query(
+          'UPDATE mitarbeiter SET mfa_backup_codes=$1 WHERE mitarbeiter_id=$2',
+          [newCodes, user_id]
+        );
+        verified = true;
+      }
+    }
+
+    if (!verified) return res.status(401).json({ error: 'MFA-Überprüfung fehlgeschlagen' });
+
+    res.json({
+      message: 'Login erfolgreich',
+      user: {
+        id: u.mitarbeiter_id,
+        name: u.name,
+        vorname: u.vorname,
+        email: u.email,
+        rolle: u.rolle,
+        mfa_enabled: true
+      }
+    });
+  } catch (e) {
+    console.error('MFA verify error:', e);
+    res.status(500).json({ error: 'Fehler bei MFA-Überprüfung' });
+  }
+});
+
 
 /* ===================== Customers ===================== */
 app.get('/api/customers', async (req, res) => {

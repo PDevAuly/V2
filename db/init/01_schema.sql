@@ -1,3 +1,7 @@
+-- =====================================================================
+-- PAULY DASHBOARD - VOLLSTÄNDIGES SICHERES SCHEMA
+-- Kombiniert ursprüngliche Struktur + Sicherheitsverbesserungen
+-- =====================================================================
 
 CREATE OR REPLACE FUNCTION set_updated_at() RETURNS TRIGGER AS $$
 BEGIN
@@ -7,21 +11,55 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- =====================================================================
---  KUNDEN & ANSPRECHPARTNER (Onboarding Step 1)
+-- MITARBEITER (mit Sicherheitsverbesserungen)
 -- =====================================================================
 
 CREATE TABLE IF NOT EXISTS mitarbeiter (
   mitarbeiter_id SERIAL PRIMARY KEY,
   vorname        TEXT        NOT NULL,
   name           TEXT        NOT NULL,
-  email          TEXT        NOT NULL UNIQUE,
-  passwort       TEXT        NOT NULL,         -- vorerst Klartext (später hash)
+  email          TEXT        NOT NULL,
+  passwort       TEXT,                    -- Legacy (wird migriert)
+  passwort_hash  TEXT,                    -- Sichere Speicherung
   telefonnummer  TEXT,
   rolle          TEXT        NOT NULL DEFAULT 'aussendienst',
-  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  
+  -- Sicherheitsfeatures
+  failed_attempts INTEGER    DEFAULT 0,
+  locked_until   TIMESTAMPTZ,
+  last_login     TIMESTAMPTZ,
+  
+  -- MFA
+  mfa_enabled    BOOLEAN     DEFAULT false,
+  mfa_secret     TEXT,
+  mfa_temp_secret TEXT,
+  mfa_enrolled_at TIMESTAMPTZ,
+  mfa_backup_codes JSONB,
+  
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  
+  -- Constraints
+  CONSTRAINT chk_email_format CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'),
+  CONSTRAINT chk_failed_attempts_positive CHECK (failed_attempts >= 0)
 );
 
-CREATE TABLE customers (
+-- Sichere E-Mail-Eindeutigkeit (case-insensitive)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mitarbeiter_email_unique ON mitarbeiter (LOWER(email));
+CREATE INDEX IF NOT EXISTS idx_mitarbeiter_last_login ON mitarbeiter (last_login);
+CREATE INDEX IF NOT EXISTS idx_mitarbeiter_locked ON mitarbeiter (locked_until) WHERE locked_until IS NOT NULL;
+
+-- Updated-Trigger
+DROP TRIGGER IF EXISTS trg_mitarbeiter_updated ON mitarbeiter;
+CREATE TRIGGER trg_mitarbeiter_updated
+    BEFORE UPDATE ON mitarbeiter
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- =====================================================================
+-- CUSTOMERS & ANSPRECHPARTNER
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS customers (
   kunden_id      BIGSERIAL PRIMARY KEY,
   firmenname     TEXT        NOT NULL,
   email          TEXT        NOT NULL,
@@ -34,13 +72,16 @@ CREATE TABLE customers (
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Performance-Indizes
+CREATE INDEX IF NOT EXISTS idx_customers_email ON customers (LOWER(email));
+CREATE INDEX IF NOT EXISTS idx_customers_firmenname ON customers (firmenname);
+
 CREATE TRIGGER trg_customers_updated
 BEFORE UPDATE ON customers
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
--- Ansprechpartner (aus onboardingCustomerData.ansprechpartner)
--- Dein aktuelles UI zeigt Vorname/Name/Position; E-Mail/Tel sind optional vorgesehen.
-CREATE TABLE customer_contacts (
+-- Ansprechpartner
+CREATE TABLE IF NOT EXISTS customer_contacts (
   kontakt_id     BIGSERIAL PRIMARY KEY,
   kunden_id      BIGINT NOT NULL REFERENCES customers(kunden_id) ON DELETE CASCADE,
   vorname        TEXT,
@@ -59,27 +100,27 @@ BEFORE UPDATE ON customer_contacts
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- =====================================================================
---  ONBOARDING (Step 2/3): Hauptentität + Teilbereiche
+-- ONBOARDING STRUKTUR
 -- =====================================================================
 
--- Ein Onboarding-Eintrag je Kunde (du postest { kunde_id, infrastructure_data })
-CREATE TABLE onboarding (
+CREATE TABLE IF NOT EXISTS onboarding (
   onboarding_id  BIGSERIAL PRIMARY KEY,
   kunden_id      BIGINT NOT NULL REFERENCES customers(kunden_id) ON DELETE CASCADE,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX onboarding_kunde_idx ON onboarding(kunden_id);
+CREATE INDEX IF NOT EXISTS idx_onboarding_created_at ON onboarding (created_at DESC);
 
 CREATE TRIGGER trg_onboarding_updated
 BEFORE UPDATE ON onboarding
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- -------- Netzwerk --------
-CREATE TABLE onboarding_netzwerk (
+CREATE TABLE IF NOT EXISTS onboarding_netzwerk (
   netzwerk_id              BIGSERIAL PRIMARY KEY,
   onboarding_id            BIGINT NOT NULL REFERENCES onboarding(onboarding_id) ON DELETE CASCADE,
-  internetzugangsart       TEXT,               -- DSL/VDSL/Glasfaser/...
+  internetzugangsart       TEXT,
   firewall_modell          TEXT,
   feste_ip_vorhanden       BOOLEAN NOT NULL DEFAULT FALSE,
   ip_adresse               TEXT,
@@ -96,18 +137,17 @@ CREATE TRIGGER trg_onboarding_netzwerk_updated
 BEFORE UPDATE ON onboarding_netzwerk
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
--- -------- Hardware (Liste) --------
--- Frontend: infrastructureData.hardware.hardwareList = Array
-CREATE TABLE onboarding_hardware (
+-- -------- Hardware --------
+CREATE TABLE IF NOT EXISTS onboarding_hardware (
   hardware_id     BIGSERIAL PRIMARY KEY,
   onboarding_id   BIGINT NOT NULL REFERENCES onboarding(onboarding_id) ON DELETE CASCADE,
-  typ             TEXT,   -- z.B. Server/NAS/Firewall/...
+  typ             TEXT,
   hersteller      TEXT,
   modell          TEXT,
   seriennummer    TEXT,
   standort        TEXT,
   ip              TEXT,
-  details_jsonb   TEXT,   -- im UI als Freitext-Textarea benannt; Typ TEXT lässt alles zu
+  details_jsonb   TEXT,
   informationen   TEXT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -119,13 +159,13 @@ BEFORE UPDATE ON onboarding_hardware
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- -------- Mail --------
-CREATE TABLE onboarding_mail (
+CREATE TABLE IF NOT EXISTS onboarding_mail (
   mail_id         BIGSERIAL PRIMARY KEY,
   onboarding_id   BIGINT NOT NULL REFERENCES onboarding(onboarding_id) ON DELETE CASCADE,
-  anbieter        TEXT,            -- Exchange/Office365/Gmail/IMAP/Other
+  anbieter        TEXT,
   anzahl_postfach INTEGER,
   anzahl_shared   INTEGER,
-  gesamt_speicher NUMERIC(12,2),   -- GB
+  gesamt_speicher NUMERIC(12,2),
   pop3_connector  BOOLEAN NOT NULL DEFAULT FALSE,
   mobiler_zugriff BOOLEAN NOT NULL DEFAULT FALSE,
   informationen   TEXT,
@@ -139,20 +179,18 @@ BEFORE UPDATE ON onboarding_mail
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- -------- Software --------
--- Mit Requirements (Array) & Applikationen (Array)
-CREATE TABLE onboarding_software (
+CREATE TABLE IF NOT EXISTS onboarding_software (
   software_id     BIGSERIAL PRIMARY KEY,
   onboarding_id   BIGINT NOT NULL REFERENCES onboarding(onboarding_id) ON DELETE CASCADE,
   name            TEXT,
   licenses        INTEGER,
-  critical        TEXT,            -- 'hoch' | 'niedrig' (UI liefert diese Strings)
+  critical        TEXT,
   description     TEXT,
-  -- optionale Felder, die Step3 anzeigt (UI hat derzeit keine Inputs dafür):
   virenschutz     TEXT,
   schnittstellen  TEXT,
   wartungsvertrag BOOLEAN,
   migration_support BOOLEAN,
-  verwendete_applikationen_text TEXT,  -- Freitext aus UI
+  verwendete_applikationen_text TEXT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -162,11 +200,11 @@ CREATE TRIGGER trg_onboarding_software_updated
 BEFORE UPDATE ON onboarding_software
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
--- Software: Anforderungen (requirements: [{type, detail}])
-CREATE TABLE onboarding_software_requirements (
+-- Software Requirements
+CREATE TABLE IF NOT EXISTS onboarding_software_requirements (
   requirement_id  BIGSERIAL PRIMARY KEY,
   software_id     BIGINT NOT NULL REFERENCES onboarding_software(software_id) ON DELETE CASCADE,
-  type            TEXT NOT NULL,  -- CPU/RAM/Speicher/Betriebssystem/Zielumgebung/Netzwerk/Sonstiges
+  type            TEXT NOT NULL,
   detail          TEXT NOT NULL,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -177,11 +215,11 @@ CREATE TRIGGER trg_swreq_updated
 BEFORE UPDATE ON onboarding_software_requirements
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
--- Software: Verwendete Applikationen (Liste)
-CREATE TABLE onboarding_software_apps (
+-- Software Apps
+CREATE TABLE IF NOT EXISTS onboarding_software_apps (
   app_id       BIGSERIAL PRIMARY KEY,
   software_id  BIGINT NOT NULL REFERENCES onboarding_software(software_id) ON DELETE CASCADE,
-  name         TEXT NOT NULL,  -- Ein Eintrag pro Zeile aus deinem Textfeld (bereits im FE gesplittet)
+  name         TEXT NOT NULL,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -192,14 +230,14 @@ BEFORE UPDATE ON onboarding_software_apps
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- -------- Backup --------
-CREATE TABLE onboarding_backup (
+CREATE TABLE IF NOT EXISTS onboarding_backup (
   backup_id      BIGSERIAL PRIMARY KEY,
   onboarding_id  BIGINT NOT NULL REFERENCES onboarding(onboarding_id) ON DELETE CASCADE,
-  tool           TEXT,              -- Veeam/Acronis/Borg/Custom
-  interval       TEXT,              -- täglich/wöchentlich/monatlich/stündlich
-  retention      TEXT,              -- z. B. "30 Tage"
-  location       TEXT,              -- NAS/Cloud/...
-  size           NUMERIC(12,2),     -- GB
+  tool           TEXT,
+  interval       TEXT,
+  retention      TEXT,
+  location       TEXT,
+  size           NUMERIC(12,2),
   info           TEXT,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -211,7 +249,7 @@ BEFORE UPDATE ON onboarding_backup
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- -------- Sonstiges --------
-CREATE TABLE onboarding_sonstiges (
+CREATE TABLE IF NOT EXISTS onboarding_sonstiges (
   sonstiges_id   BIGSERIAL PRIMARY KEY,
   onboarding_id  BIGINT NOT NULL REFERENCES onboarding(onboarding_id) ON DELETE CASCADE,
   text           TEXT,
@@ -225,11 +263,10 @@ BEFORE UPDATE ON onboarding_sonstiges
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- =====================================================================
---  CALCULATIONSECTION (Kalkulations-Kopf + Positionen)
+-- KALKULATIONEN
 -- =====================================================================
 
--- Kopf (Standard-Stundensatz + MwSt; Summen werden automatisch gepflegt)
-CREATE TABLE kalkulationen (
+CREATE TABLE IF NOT EXISTS kalkulationen (
   kalkulations_id BIGSERIAL PRIMARY KEY,
   kunden_id       BIGINT NOT NULL REFERENCES customers(kunden_id) ON DELETE RESTRICT,
   datum           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -237,32 +274,35 @@ CREATE TABLE kalkulationen (
   stundensatz     NUMERIC(10,2) NOT NULL,
   mwst_prozent    NUMERIC(5,2)  NOT NULL DEFAULT 19,
 
-  gesamtzeit      NUMERIC(12,2) NOT NULL DEFAULT 0,   -- Summe Stunden
-  gesamtpreis     NUMERIC(12,2) NOT NULL DEFAULT 0,   -- Brutto
+  gesamtzeit      NUMERIC(12,2) NOT NULL DEFAULT 0,
+  gesamtpreis     NUMERIC(12,2) NOT NULL DEFAULT 0,
 
-  status          TEXT NOT NULL DEFAULT 'neu',        -- 'neu' | 'in Arbeit' | 'erledigt'
+  status          TEXT NOT NULL DEFAULT 'neu',
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
   CONSTRAINT chk_status CHECK (status IN ('neu','in Arbeit','erledigt'))
 );
 
+-- Performance-Indizes
 CREATE INDEX kalkulationen_kunde_datum_idx ON kalkulationen (kunden_id, datum DESC);
+CREATE INDEX IF NOT EXISTS idx_kalkulationen_datum ON kalkulationen (datum DESC);
+CREATE INDEX IF NOT EXISTS idx_kalkulationen_status ON kalkulationen (status);
 
 CREATE TRIGGER trg_kalkulationen_updated
 BEFORE UPDATE ON kalkulationen
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
--- Positionen (optional: section für Gruppen)
-CREATE TABLE kalkulation_positionen (
+-- Kalkulations-Positionen
+CREATE TABLE IF NOT EXISTS kalkulation_positionen (
   position_id        BIGSERIAL PRIMARY KEY,
   kalkulations_id    BIGINT NOT NULL REFERENCES kalkulationen(kalkulations_id) ON DELETE CASCADE,
 
-  section            TEXT,               -- z. B. "Vorbereitende Maßnahmen"
-  beschreibung       TEXT NOT NULL,      -- Tätigkeit
+  section            TEXT,
+  beschreibung       TEXT NOT NULL,
   anzahl             NUMERIC(12,2) NOT NULL DEFAULT 1,
-  dauer_pro_einheit  NUMERIC(12,2) NOT NULL DEFAULT 0, -- Std je Einheit
-  stundensatz        NUMERIC(10,2),      -- NULL => Kopf-Stundensatz verwenden
+  dauer_pro_einheit  NUMERIC(12,2) NOT NULL DEFAULT 0,
+  stundensatz        NUMERIC(10,2),
   info               TEXT,
 
   created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -276,7 +316,7 @@ CREATE TRIGGER trg_kalk_pos_updated
 BEFORE UPDATE ON kalkulation_positionen
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
--- Summen-Neuberechnung
+-- Summen-Berechnungs-Funktionen
 CREATE OR REPLACE FUNCTION kalkulation_recalc(p_kalk_id BIGINT) RETURNS VOID AS $$
 DECLARE
   v_std   NUMERIC(10,2);
@@ -335,7 +375,7 @@ CREATE TRIGGER trg_kalk_header_recalc
 AFTER UPDATE OF stundensatz, mwst_prozent ON kalkulationen
 FOR EACH ROW EXECUTE FUNCTION kalkulation_header_recalc();
 
--- Komfort-View (Netto/MwSt/Brutto live)
+-- Komfort-View
 CREATE OR REPLACE VIEW v_kalkulationen_berechnet AS
 SELECT
   k.*,
@@ -354,3 +394,145 @@ SELECT
   k.gesamtpreis AS sum_brutto
 FROM kalkulationen k;
 
+-- =====================================================================
+-- SICHERHEITSFEATURES
+-- =====================================================================
+
+-- Audit Log
+CREATE TABLE IF NOT EXISTS audit_log (
+    audit_id BIGSERIAL PRIMARY KEY,
+    table_name VARCHAR(50) NOT NULL,
+    operation VARCHAR(10) NOT NULL,
+    record_id BIGINT,
+    user_id BIGINT REFERENCES mitarbeiter(mitarbeiter_id),
+    old_values JSONB,
+    new_values JSONB,
+    ip_address INET,
+    user_agent TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_table_name ON audit_log (table_name);
+CREATE INDEX IF NOT EXISTS idx_audit_log_user_id ON audit_log (user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log (created_at DESC);
+
+-- Session Management
+CREATE TABLE IF NOT EXISTS user_sessions (
+    session_id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES mitarbeiter(mitarbeiter_id) ON DELETE CASCADE,
+    refresh_token_hash TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    last_used TIMESTAMPTZ DEFAULT NOW(),
+    ip_address INET,
+    user_agent TEXT,
+    is_revoked BOOLEAN DEFAULT false
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions (user_id);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_expires_at ON user_sessions (expires_at);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_refresh_token ON user_sessions (refresh_token_hash);
+
+-- =====================================================================
+-- SICHERHEITS-VIEWS
+-- =====================================================================
+
+CREATE OR REPLACE VIEW user_stats AS
+SELECT 
+    m.mitarbeiter_id,
+    m.email,
+    m.vorname,
+    m.name,
+    m.rolle,
+    m.mfa_enabled,
+    m.failed_attempts,
+    m.locked_until IS NOT NULL AND m.locked_until > NOW() as is_locked,
+    m.last_login,
+    m.created_at,
+    COUNT(s.session_id) as active_sessions
+FROM mitarbeiter m
+LEFT JOIN user_sessions s ON m.mitarbeiter_id = s.user_id 
+    AND s.expires_at > NOW() 
+    AND s.is_revoked = false
+GROUP BY m.mitarbeiter_id, m.email, m.vorname, m.name, m.rolle, 
+         m.mfa_enabled, m.failed_attempts, m.locked_until, 
+         m.last_login, m.created_at;
+
+CREATE OR REPLACE VIEW security_events AS
+SELECT 
+    'login_failure' as event_type,
+    email as user_identifier,
+    failed_attempts::text as details,
+    updated_at as event_time
+FROM mitarbeiter 
+WHERE failed_attempts > 0
+
+UNION ALL
+
+SELECT 
+    'account_locked' as event_type,
+    email as user_identifier,
+    'Account locked until ' || locked_until::text as details,
+    locked_until as event_time
+FROM mitarbeiter 
+WHERE locked_until IS NOT NULL AND locked_until > NOW();
+
+-- =====================================================================
+-- WARTUNGS-FUNKTIONEN
+-- =====================================================================
+
+CREATE OR REPLACE FUNCTION cleanup_expired_sessions()
+RETURNS void AS $$
+BEGIN
+    DELETE FROM user_sessions 
+    WHERE expires_at < NOW() OR is_revoked = true;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION security_maintenance()
+RETURNS void AS $$
+BEGIN
+    -- Abgelaufene Sessions löschen
+    DELETE FROM user_sessions WHERE expires_at < NOW() OR is_revoked = true;
+    
+    -- Alte Audit-Logs löschen (älter als 1 Jahr)
+    DELETE FROM audit_log WHERE created_at < NOW() - INTERVAL '1 year';
+    
+    -- Account-Sperrungen zurücksetzen (abgelaufen)
+    UPDATE mitarbeiter 
+    SET locked_until = NULL, failed_attempts = 0 
+    WHERE locked_until IS NOT NULL AND locked_until < NOW();
+    
+    RAISE NOTICE 'Security maintenance completed at %', NOW();
+END;
+$$ LANGUAGE plpgsql;
+
+-- =====================================================================
+-- DATEN NORMALISIEREN
+-- =====================================================================
+
+-- E-Mails zu Kleinbuchstaben normalisieren (falls bereits Daten vorhanden)
+UPDATE mitarbeiter SET email = LOWER(email) WHERE email != LOWER(email);
+UPDATE customers SET email = LOWER(email) WHERE email != LOWER(email);
+UPDATE customer_contacts SET email = LOWER(email) WHERE email IS NOT NULL AND email != LOWER(email);
+
+-- Test-Admin-Account (nur für Entwicklung)
+INSERT INTO mitarbeiter (
+    vorname, 
+    name, 
+    email, 
+    passwort,
+    telefonnummer, 
+    rolle,
+    created_at,
+    updated_at
+) VALUES (
+    'System',
+    'Admin',
+    'admin@pauly-dashboard.local',
+    'change_me_immediately',
+    '',
+    'admin',
+    NOW(),
+    NOW()
+) ON CONFLICT (LOWER(email)) DO NOTHING;
