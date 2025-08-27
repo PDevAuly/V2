@@ -5,81 +5,125 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import Login from './pages/login';
 import Register from './pages/register';
 import Dashboard from './pages/dashboard';
+import MFASetup from './components/MFASetup';
 
 import './pages/login.css';
 import './pages/register.css';
 
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [loading, setLoading] = useState(true);
+  // User aus LocalStorage laden (inkl. Migration alter Keys)
+  const [user, setUser] = useState(() => {
+    try {
+      const raw = localStorage.getItem('user');
+      if (raw) return JSON.parse(raw);
 
-  // Beim App-Start: Prüfen ob User eingeloggt ist
-  useEffect(() => {
-    const token = localStorage.getItem('userToken');
-    const userData = localStorage.getItem('userData');
-    
-    if (token && userData) {
-      setIsAuthenticated(true);
+      // ---- Migration älterer Versionen ----
+      const legacyUserData = localStorage.getItem('userData');
+      const legacyToken = localStorage.getItem('userToken');
+      if (legacyUserData) {
+        const parsed = JSON.parse(legacyUserData);
+        // neuen Key setzen und alte entfernen
+        localStorage.setItem('user', JSON.stringify(parsed));
+        localStorage.removeItem('userData');
+        if (legacyToken) localStorage.removeItem('userToken');
+        return parsed;
+      }
+      if (legacyToken) localStorage.removeItem('userToken');
+      // -------------------------------------
+
+      return null;
+    } catch {
+      return null;
     }
-    setLoading(false);
-  }, []);
+  });
 
-  // Login-Handler
+  // User-Änderungen im LocalStorage spiegeln
+  useEffect(() => {
+    if (user) localStorage.setItem('user', JSON.stringify(user));
+    else localStorage.removeItem('user');
+  }, [user]);
+
+  const isAuthenticated = !!user;
+
+  // Login vom <Login /> entgegennehmen
   const handleLogin = (userData) => {
-    localStorage.setItem('userToken', 'logged_in');
-    localStorage.setItem('userData', JSON.stringify(userData));
-    setIsAuthenticated(true);
+    // Erwartet Objekt wie { id, email, name, vorname, rolle, ... }
+    setUser(userData || null);
   };
 
-  // Logout-Handler
+  // Logout aus <Dashboard />
   const handleLogout = () => {
-    localStorage.removeItem('userToken');
-    localStorage.removeItem('userData');
-    setIsAuthenticated(false);
+    setUser(null);
   };
 
-  // Während Authentifizierung geprüft wird
-  if (loading) {
-    return <div>Lade...</div>;
-  }
+  // MFA Enabled Handler
+  const handleMFAEnabled = (mfaEnabled) => {
+    setUser(prevUser => ({
+      ...prevUser,
+      mfaEnabled
+    }));
+  };
+
+  // Schutz für geschützte Routen
+  const RequireAuth = ({ children }) => {
+    return isAuthenticated ? children : <Navigate to="/login" replace />;
+  };
 
   return (
     <Router>
       <Routes>
-        <Route 
-          path="/" 
+        {/* Root: je nach Zustand weiterleiten */}
+        <Route
+          path="/"
+          element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />}
+        />
+
+        {/* Login: wenn schon eingeloggt -> Dashboard */}
+        <Route
+          path="/login"
           element={
-            isAuthenticated ? 
-            <Navigate to="/dashboard" replace /> : 
-            <Navigate to="/login" replace />
-          } 
+            isAuthenticated ? (
+              <Navigate to="/dashboard" replace />
+            ) : (
+              <Login onLoginSuccess={handleLogin} />
+            )
+          }
+        />
+
+        {/* Registrierung: ebenfalls gesperrt, wenn eingeloggt */}
+        <Route
+          path="/register"
+          element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Register />}
+        />
+
+        {/* Dashboard nur mit Auth, User an Dashboard weiterreichen */}
+        <Route
+          path="/dashboard"
+          element={
+            <RequireAuth>
+              <Dashboard onLogout={handleLogout} userInfo={user} />
+            </RequireAuth>
+          }
         />
         
-        <Route 
-          path="/login" 
+        {/* MFA Setup Route */}
+        <Route
+          path="/profile/mfa"
           element={
-            isAuthenticated ? 
-            <Navigate to="/dashboard" replace /> : 
-            <Login onLoginSuccess={handleLogin} />
-          } 
+            <RequireAuth>
+              <MFASetup 
+                user={user} 
+                accessToken={user?.token} 
+                onMFAEnabled={handleMFAEnabled} 
+              />
+            </RequireAuth>
+          }
         />
-        
-        <Route 
-          path="/register" 
-          element={
-            isAuthenticated ? 
-            <Navigate to="/dashboard" replace /> : 
-            <Register />
-          } 
-        />
-        
-        <Route 
-          path="/dashboard" 
-          element={
-            isAuthenticated ? 
-            <Dashboard onLogout={handleLogout} /> : 
-            <Navigate to="/login" replace />
-          } 
+
+        {/* Fallback: alles andere passend umlenken */}
+        <Route
+          path="*"
+          element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />}
         />
       </Routes>
     </Router>

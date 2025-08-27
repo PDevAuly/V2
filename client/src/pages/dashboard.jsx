@@ -2,8 +2,9 @@
 import React, { useState, useEffect } from 'react';
 import {
   User, Clock, RotateCcw, Calculator, TrendingUp, Network, ChevronRight,
-  Sun, Moon, X, Save, Eye, EyeOff, Edit3
+  Sun, Moon, X, Save, Eye, Shield, EyeOff, Edit3
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import OnboardingSection from '../features/onboarding/OnboardingSection.jsx';
 import CalculationSection from '../features/kalkulation/calculationSection.jsx';
 import useDarkMode from '../hooks/useDarkMode';
@@ -765,34 +766,45 @@ export default function Dashboard({ onLogout, userInfo }) {
               </button>
 
               {showProfile && (
-                <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-900 rounded-md shadow-lg border border-gray-200 dark:border-gray-700 z-10">
-                  <div className="p-3 border-b border-gray-100 dark:border-gray-800">
-                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                      {userInfo?.vorname} {userInfo?.name}
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{userInfo?.email}</p>
-                  </div>
-                  <div className="py-1">
-                    <button
-                      onClick={() => {
-                        setShowProfile(false);
-                        setShowProfileModal(true);
-                      }}
-                      className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
-                    >
-                      <Edit3 className="w-4 h-4 mr-2" />
-                      Profil anzeigen
-                    </button>
-                    <hr className="my-1 border-gray-100 dark:border-gray-800" />
-                    <button
-                      onClick={onLogout}
-                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
-                    >
-                      Abmelden
-                    </button>
-                  </div>
-                </div>
-              )}
+  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-900 rounded-md shadow-lg border border-gray-200 dark:border-gray-700 z-10">
+    <div className="p-3 border-b border-gray-100 dark:border-gray-800">
+      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+        {userInfo?.vorname} {userInfo?.name}
+      </p>
+      <p className="text-xs text-gray-500 dark:text-gray-400">{userInfo?.email}</p>
+    </div>
+    <div className="py-1">
+      <button
+        onClick={() => {
+          setShowProfile(false);
+          setShowProfileModal(true);
+        }}
+        className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+      >
+        <Edit3 className="w-4 h-4 mr-2" />
+        Profil anzeigen
+      </button>
+      
+      {/* MFA-Link hier einfügen */}
+      <Link
+        to="/profile/mfa"
+        onClick={() => setShowProfile(false)}
+        className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+      >
+        <Shield className="w-4 h-4 mr-2" />
+        MFA einrichten
+      </Link>
+      
+      <hr className="my-1 border-gray-100 dark:border-gray-800" />
+      <button
+        onClick={onLogout}
+        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+      >
+        Abmelden
+      </button>
+    </div>
+  </div>
+)}
             </div>
           </div>
         </header>

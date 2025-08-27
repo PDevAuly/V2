@@ -10,7 +10,8 @@ import {
   HardDrive,
   CheckCircle,
   ChevronRight,
-  Trash2
+  Trash2,
+  Plus
 } from 'lucide-react';
 
 /* ------------------------- STEP 1 (Top-Level) ------------------------- */
@@ -107,33 +108,114 @@ function Step2({
 }) {
   const { bgClass, borderClass, textClass, textSecondaryClass, textMutedClass, inputClass } = classes;
 
-  // State für Systemanforderungen
-  const [selectedRequirementType, setSelectedRequirementType] = useState('');
-  const [requirementDetail, setRequirementDetail] = useState('');
+  // State für Systemanforderungen (pro Software-Eintrag)
+  const [requirementDetails, setRequirementDetails] = useState({});
 
-  const addRequirement = () => {
-    if (selectedRequirementType && requirementDetail) {
+  // Funktion zum Hinzufügen eines neuen Software-Eintrags
+  const addSoftwareEntry = () => {
+    const softwareList = infrastructureData.software?.softwareList || [];
+    setInfrastructureData({
+      ...infrastructureData,
+      software: {
+        ...infrastructureData.software,
+        softwareList: [
+          ...softwareList,
+          {
+            id: Date.now(),
+            name: '',
+            licenses: '',
+            critical: '',
+            description: '',
+            requirements: [],
+            verwendete_applikationen_text: '',
+            verwendete_applikationen: []
+          }
+        ]
+      }
+    });
+  };
+
+  // Funktion zum Entfernen eines Software-Eintrags
+  const removeSoftwareEntry = (index) => {
+    const updatedList = infrastructureData.software.softwareList.filter((_, i) => i !== index);
+    setInfrastructureData({
+      ...infrastructureData,
+      software: { 
+        ...infrastructureData.software, 
+        softwareList: updatedList 
+      }
+    });
+    
+    // Entferne auch die zugehörigen Requirement-Details
+    const newRequirementDetails = {...requirementDetails};
+    delete newRequirementDetails[index];
+    setRequirementDetails(newRequirementDetails);
+  };
+
+  // Funktion zum Aktualisieren eines Software-Eintrags
+  const updateSoftwareEntry = (index, field, value) => {
+    const updatedList = [...infrastructureData.software.softwareList];
+    updatedList[index] = { ...updatedList[index], [field]: value };
+    setInfrastructureData({
+      ...infrastructureData,
+      software: { ...infrastructureData.software, softwareList: updatedList }
+    });
+  };
+
+  // Funktion zum Hinzufügen einer Anforderung zu einem bestimmten Software-Eintrag
+  const addRequirement = (index) => {
+    const detailKey = `${index}`;
+    const requirementDetail = requirementDetails[detailKey] || {};
+    
+    if (requirementDetail.type && requirementDetail.detail) {
+      const updatedList = [...infrastructureData.software.softwareList];
+      updatedList[index] = {
+        ...updatedList[index],
+        requirements: [
+          ...(updatedList[index].requirements || []),
+          { type: requirementDetail.type, detail: requirementDetail.detail }
+        ]
+      };
+      
       setInfrastructureData({
         ...infrastructureData,
-        software: {
-          ...infrastructureData.software,
-          requirements: [
-            ...(infrastructureData.software?.requirements || []),
-            { type: selectedRequirementType, detail: requirementDetail }
-          ]
-        }
+        software: { ...infrastructureData.software, softwareList: updatedList }
       });
-      setSelectedRequirementType('');
-      setRequirementDetail('');
+      
+      // Zurücksetzen der Eingabefelder für diesen Eintrag
+      setRequirementDetails({
+        ...requirementDetails,
+        [detailKey]: { type: '', detail: '' }
+      });
     }
   };
 
-  const removeRequirement = (index) => {
-    const updatedRequirements = [...(infrastructureData.software?.requirements || [])];
-    updatedRequirements.splice(index, 1);
+  // Funktion zum Entfernen einer Anforderung von einem bestimmten Software-Eintrag
+  const removeRequirement = (softwareIndex, requirementIndex) => {
+    const updatedList = [...infrastructureData.software.softwareList];
+    const updatedRequirements = [...(updatedList[softwareIndex].requirements || [])];
+    updatedRequirements.splice(requirementIndex, 1);
+    
+    updatedList[softwareIndex] = {
+      ...updatedList[softwareIndex],
+      requirements: updatedRequirements
+    };
+    
     setInfrastructureData({
       ...infrastructureData,
-      software: { ...infrastructureData.software, requirements: updatedRequirements }
+      software: { ...infrastructureData.software, softwareList: updatedList }
+    });
+  };
+
+  // Funktion zum Aktualisieren der Requirement-Details
+  const updateRequirementDetail = (index, field, value) => {
+    const detailKey = `${index}`;
+    setRequirementDetails({
+      ...requirementDetails,
+      [detailKey]: {
+        ...(requirementDetails[detailKey] || {}),
+        [field]: value
+      }
     });
   };
 
@@ -767,176 +849,194 @@ function Step2({
         </div>
       </div>
 
-      {/* Software */}
+      {/* Software - Überarbeitet für mehrere Einträge */}
       <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
-        <div className="flex items-center mb-4">
-          <Settings className="w-5 h-5 text-indigo-500 mr-2" />
-          <h3 className={`text-lg font-medium ${textClass}`}>Software</h3>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center">
+            <Settings className="w-5 h-5 text-indigo-500 mr-2" />
+            <h3 className={`text-lg font-medium ${textClass}`}>Software</h3>
+          </div>
+          <button
+            type="button"
+            onClick={addSoftwareEntry}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors flex items-center space-x-2"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Software hinzufügen</span>
+          </button>
         </div>
 
-        <div className="grid grid-cols-1 gap-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Software-Name */}
-            <div>
-              <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Software-Name</label>
-              <input
-                type="text"
-                value={infrastructureData.software?.name || ''}
-                onChange={(e) =>
-                  setInfrastructureData({
-                    ...infrastructureData,
-                    software: { ...infrastructureData.software, name: e.target.value },
-                  })
-                }
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-                placeholder="z.B. Microsoft Office"
-              />
-            </div>
-
-            {/* Lizenzen */}
-            <div>
-              <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Anzahl Lizenzen</label>
-              <input
-                type="number"
-                value={infrastructureData.software?.licenses || ''}
-                onChange={(e) =>
-                  setInfrastructureData({
-                    ...infrastructureData,
-                    software: { ...infrastructureData.software, licenses: e.target.value },
-                  })
-                }
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-                placeholder="z.B. 25"
-                min="0"
-              />
-            </div>
-
-            {/* Kritisch */}
-            <div>
-              <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Kritikalität</label>
-              <select
-                value={infrastructureData.software?.critical || ''}
-                onChange={(e) =>
-                  setInfrastructureData({
-                    ...infrastructureData,
-                    software: { ...infrastructureData.software, critical: e.target.value },
-                  })
-                }
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-              >
-                <option value="">Bitte auswählen</option>
-                <option value="hoch">Hoch (übernehmen)</option>
-                <option value="niedrig">Niedrig (nicht übernehmen)</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Systemanforderungen - Auswahl */}
-          <div>
-            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Systemanforderungen hinzufügen</label>
-            <div className="flex gap-2 mb-2">
-              <select
-                value={selectedRequirementType}
-                onChange={(e) => setSelectedRequirementType(e.target.value)}
-                className={`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-              >
-                <option value="">Kategorie wählen</option>
-                <option value="CPU">CPU</option>
-                <option value="RAM">RAM</option>
-                <option value="Speicher">Speicher</option>
-                <option value="Betriebssystem">Betriebssystem</option>
-                <option value="Zielumgebung">Zielumgebung</option>
-                <option value="Netzwerk">Netzwerk</option>
-                <option value="Sonstiges">Sonstiges</option>
-              </select>
-
-              <input
-                type="text"
-                value={requirementDetail}
-                onChange={(e) => setRequirementDetail(e.target.value)}
-                className={`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-                placeholder="Details (z.B. '4 Kerne')"
-                disabled={!selectedRequirementType}
-              />
-
+        <div className="space-y-6">
+          {(infrastructureData.software?.softwareList || []).length === 0 ? (
+            <div className={`text-center py-8 border-2 border-dashed ${borderClass} rounded-lg`}>
+              <Settings className={`w-12 h-12 ${textMutedClass} mx-auto mb-2`} />
+              <p className={`${textMutedClass} mb-4`}>Noch keine Software hinzugefügt</p>
               <button
                 type="button"
-                onClick={addRequirement}
-                disabled={!selectedRequirementType || !requirementDetail}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400"
+                onClick={addSoftwareEntry}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors"
               >
-                Hinzufügen
+                Erste Software hinzufügen
               </button>
             </div>
+          ) : (
+            (infrastructureData.software?.softwareList || []).map((software, index) => (
+              <div key={software.id} className={`${isDark ? 'bg-gray-700' : 'bg-gray-50'} p-4 rounded-lg border ${borderClass}`}>
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className={`text-md font-medium ${textClass}`}>
+                    Software #{index + 1} {software.name && `(${software.name})`}
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => removeSoftwareEntry(index)}
+                    className="text-red-500 hover:text-red-700 p-1"
+                    title="Software entfernen"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
 
-            {/* Anzeige der Systemanforderungen */}
-            <div className="mt-4">
-              <h4 className={`text-sm font-medium ${textSecondaryClass} mb-2`}>Aktuelle Systemanforderungen:</h4>
-              {infrastructureData.software?.requirements?.length > 0 ? (
-                <ul className="space-y-2">
-                  {infrastructureData.software.requirements.map((req, index) => (
-                    <li key={index} className="flex justify-between items-center p-2 bg-gray-100 dark:bg-gray-700 rounded">
-                      <span>
-                        <strong>{req.type}:</strong> {req.detail}
-                      </span>
-                      <button
-                        onClick={() => removeRequirement(index)}
-                        className="text-red-500 hover:text-red-700"
-                        aria-label="Anforderung entfernen"
+                <div className="grid grid-cols-1 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Software-Name */}
+                    <div>
+                      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Software-Name</label>
+                      <input
+                        type="text"
+                        value={software.name || ''}
+                        onChange={(e) => updateSoftwareEntry(index, 'name', e.target.value)}
+                        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+                        placeholder="z.B. Microsoft Office"
+                      />
+                    </div>
+
+                    {/* Lizenzen */}
+                    <div>
+                      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Anzahl Lizenzen</label>
+                      <input
+                        type="number"
+                        value={software.licenses || ''}
+                        onChange={(e) => updateSoftwareEntry(index, 'licenses', e.target.value)}
+                        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+                        placeholder="z.B. 25"
+                        min="0"
+                      />
+                    </div>
+
+                    {/* Kritisch */}
+                    <div>
+                      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Kritikalität</label>
+                      <select
+                        value={software.critical || ''}
+                        onChange={(e) => updateSoftwareEntry(index, 'critical', e.target.value)}
+                        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <option value="">Bitte auswählen</option>
+                        <option value="hoch">Hoch (übernehmen)</option>
+                        <option value="niedrig">Niedrig (nicht übernehmen)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Systemanforderungen - Auswahl */}
+                  <div>
+                    <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Systemanforderungen hinzufügen</label>
+                    <div className="flex gap-2 mb-2">
+                      <select
+                        value={requirementDetails[`${index}`]?.type || ''}
+                        onChange={(e) => updateRequirementDetail(index, 'type', e.target.value)}
+                        className={`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+                      >
+                        <option value="">Kategorie wählen</option>
+                        <option value="CPU">CPU</option>
+                        <option value="RAM">RAM</option>
+                        <option value="Speicher">Speicher</option>
+                        <option value="Betriebssystem">Betriebssystem</option>
+                        <option value="Zielumgebung">Zielumgebung</option>
+                        <option value="Netzwerk">Netzwerk</option>
+                        <option value="Sonstiges">Sonstiges</option>
+                      </select>
+
+                      <input
+                        type="text"
+                        value={requirementDetails[`${index}`]?.detail || ''}
+                        onChange={(e) => updateRequirementDetail(index, 'detail', e.target.value)}
+                        className={`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+                        placeholder="Details (z.B. '4 Kerne')"
+                        disabled={!requirementDetails[`${index}`]?.type}
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => addRequirement(index)}
+                        disabled={!requirementDetails[`${index}`]?.type || !requirementDetails[`${index}`]?.detail}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400"
+                      >
+                        Hinzufügen
                       </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className={`text-sm ${textSecondaryClass}`}>Noch keine Anforderungen definiert</p>
-              )}
-            </div>
-          </div>
+                    </div>
 
-          {/* Beschreibung */}
-          <div>
-            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Beschreibung</label>
-            <textarea
-              value={infrastructureData.software?.description || ''}
-              onChange={(e) =>
-                setInfrastructureData({
-                  ...infrastructureData,
-                  software: { ...infrastructureData.software, description: e.target.value },
-                })
-              }
-              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-              rows="3"
-              placeholder="Funktionsbeschreibung der Software"
-            />
-          </div>
+                    {/* Anzeige der Systemanforderungen */}
+                    <div className="mt-4">
+                      <h4 className={`text-sm font-medium ${textSecondaryClass} mb-2`}>Aktuelle Systemanforderungen:</h4>
+                      {software.requirements?.length > 0 ? (
+                        <ul className="space-y-2">
+                          {software.requirements.map((req, reqIndex) => (
+                            <li key={reqIndex} className="flex justify-between items-center p-2 bg-gray-100 dark:bg-gray-700 rounded">
+                              <span>
+                                <strong>{req.type}:</strong> {req.detail}
+                              </span>
+                              <button
+                                onClick={() => removeRequirement(index, reqIndex)}
+                                className="text-red-500 hover:text-red-700"
+                                aria-label="Anforderung entfernen"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className={`text-sm ${textSecondaryClass}`}>Noch keine Anforderungen definiert</p>
+                      )}
+                    </div>
+                  </div>
 
-          {/* Verwendete Applikationen */}
-          <div>
-            <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
-              Wichtige Applikationen (eine pro Zeile)
-            </label>
-            <textarea
-              value={infrastructureData.software?.verwendete_applikationen_text || ''}
-              onChange={(e) =>
-                setInfrastructureData({
-                  ...infrastructureData,
-                  software: {
-                    ...infrastructureData.software,
-                    verwendete_applikationen_text: e.target.value,
-                    verwendete_applikationen: e.target.value
-                      .split('\n')
-                      .map(s => s.trim())
-                      .filter(Boolean),
-                  },
-                })
-              }
-              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-              rows="5"
-              placeholder={`z.B.\nMicrosoft Office\nAdobe Creative Cloud\nSage 50`}
-            />
-          </div>
+                  {/* Beschreibung */}
+                  <div>
+                    <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>Beschreibung</label>
+                    <textarea
+                      value={software.description || ''}
+                      onChange={(e) => updateSoftwareEntry(index, 'description', e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+                      rows="3"
+                      placeholder="Funktionsbeschreibung der Software"
+                    />
+                  </div>
+
+                  {/* Verwendete Applikationen */}
+                  <div>
+                    <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+                      Wichtige Applikationen (eine pro Zeile)
+                    </label>
+                    <textarea
+                      value={software.verwendete_applikationen_text || ''}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        updateSoftwareEntry(index, 'verwendete_applikationen_text', value);
+                        updateSoftwareEntry(index, 'verwendete_applikationen', 
+                          value.split('\n').map(s => s.trim()).filter(Boolean)
+                        );
+                      }}
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+                      rows="5"
+                      placeholder={`z.B.\nMicrosoft Office\nAdobe Creative Cloud\nSage 50`}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
@@ -1144,9 +1244,6 @@ function Step3({
   const yesNo = (v) => (v ? 'Ja' : 'Nein');
   const dash = (v) => (v !== undefined && v !== null && String(v).trim() !== '' ? String(v) : '—');
 
-  const appsText = software.verwendete_applikationen_text || '';
-  const appsList = Array.isArray(software.verwendete_applikationen) ? software.verwendete_applikationen : [];
-
   return (
     <div className="space-y-6">
       <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
@@ -1310,60 +1407,76 @@ function Step3({
         {/* Software */}
         <div className="space-y-2 mb-6">
           <h4 className={`font-semibold ${textClass}`}>Software</h4>
-          <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
-            {[
-              { label: 'Software-Name', value: software?.name },
-              { label: 'Anzahl Lizenzen', value: software?.licenses },
-              { label: 'Kritikalität', value: software?.critical },
-              { label: 'Virenschutz', value: software?.virenschutz },
-              { label: 'Schnittstellen', value: software?.schnittstellen },
-              { label: 'Wartungsvertrag', value: yesNo(software?.wartungsvertrag) },
-              { label: 'Migration Support', value: yesNo(software?.migration_support) },
-            ].map((item) => (
-              <div key={item.label}>
-                <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
-                <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
-              </div>
-            ))}
-          </dl>
+          
+          {software?.softwareList?.length > 0 ? (
+            <div className="space-y-4">
+              {software.softwareList.map((sw, index) => {
+                const appsText = sw.verwendete_applikationen_text || '';
+                const appsList = Array.isArray(sw.verwendete_applikationen) ? sw.verwendete_applikationen : [];
+                
+                return (
+                  <div key={sw.id} className={`${isDark ? 'bg-gray-700' : 'bg-gray-50'} p-4 rounded-lg`}>
+                    <h5 className={`font-medium ${textClass} mb-3`}>
+                      Software #{index + 1} {sw.name && `(${sw.name})`}
+                    </h5>
 
-          {software?.description && (
-            <div className="mt-2">
-              <dt className={`text-sm ${textMutedClass} mb-1`}>Beschreibung</dt>
-              <dd className={`text-sm ${textClass} whitespace-pre-line`}>{software.description}</dd>
+                    <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+                      {[
+                        { label: 'Software-Name', value: sw.name },
+                        { label: 'Anzahl Lizenzen', value: sw.licenses },
+                        { label: 'Kritikalität', value: sw.critical },
+                      ].map((item) => (
+                        <div key={item.label}>
+                          <dt className={`text-sm ${textMutedClass}`}>{item.label}</dt>
+                          <dd className={`text-sm ${textClass}`}>{dash(item.value)}</dd>
+                        </div>
+                      ))}
+                    </dl>
+
+                    {sw.description && (
+                      <div className="mt-3">
+                        <dt className={`text-sm ${textMutedClass} mb-1`}>Beschreibung</dt>
+                        <dd className={`text-sm ${textClass} whitespace-pre-line`}>{sw.description}</dd>
+                      </div>
+                    )}
+
+                    {sw.requirements?.length > 0 && (
+                      <div className="mt-3">
+                        <dt className={`text-sm ${textMutedClass} mb-1`}>Systemanforderungen</dt>
+                        <ul className="list-disc list-inside text-sm space-y-1">
+                          {sw.requirements.map((req, i) => (
+                            <li key={i} className={textClass}>
+                              <strong>{req.type}:</strong> {req.detail}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    <div className="mt-3">
+                      <dt className={`text-sm ${textMutedClass} mb-1`}>Verwendete Applikationen (Text)</dt>
+                      <dd className={`text-sm ${textClass} whitespace-pre-line`}>{appsText.trim() ? appsText : '—'}</dd>
+                    </div>
+
+                    <div className="mt-3">
+                      <dt className={`text-sm ${textMutedClass} mb-1`}>Verwendete Applikationen (Liste)</dt>
+                      {appsList.length > 0 ? (
+                        <ul className="list-disc list-inside text-sm space-y-1">
+                          {appsList.map((app, i) => (
+                            <li key={i} className={textClass}>{app}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className={`text-sm ${textMutedClass}`}>—</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
+          ) : (
+            <p className={`text-sm ${textMutedClass}`}>Keine Software erfasst</p>
           )}
-
-          {software?.requirements?.length > 0 && (
-            <div className="mt-2">
-              <dt className={`text-sm ${textMutedClass} mb-1`}>Systemanforderungen</dt>
-              <ul className="list-disc list-inside text-sm space-y-1">
-                {software.requirements.map((req, i) => (
-                  <li key={i} className={textClass}>
-                    <strong>{req.type}:</strong> {req.detail}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          <div className="mt-2">
-            <dt className={`text-sm ${textMutedClass} mb-1`}>Verwendete Applikationen (Text)</dt>
-            <dd className={`text-sm ${textClass} whitespace-pre-line`}>{appsText.trim() ? appsText : '—'}</dd>
-          </div>
-
-          <div className="mt-2">
-            <dt className={`text-sm ${textMutedClass} mb-1`}>Verwendete Applikationen (Liste)</dt>
-            {appsList.length > 0 ? (
-              <ul className="list-disc list-inside text-sm space-y-1">
-                {appsList.map((app, i) => (
-                  <li key={i} className={textClass}>{app}</li>
-                ))}
-              </ul>
-            ) : (
-              <p className={`text-sm ${textMutedClass}`}>—</p>
-            )}
-          </div>
         </div>
 
         {/* Backup */}
