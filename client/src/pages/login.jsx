@@ -12,8 +12,7 @@ const Login = ({ onLoginSuccess }) => {
   // MFA-States
   const [mfaRequired, setMfaRequired] = useState(false);
   const [pendingUserId, setPendingUserId] = useState(null);
-  const [challengeId, setChallengeId] = useState(null); // optional, falls Backend so arbeitet
-  const [tempToken, setTempToken] = useState(null);     // optional: z.B. mfaTempToken vom Login
+  const [pendingUserEmail, setPendingUserEmail] = useState(null);
   const [mfaToken, setMfaToken] = useState('');
 
   const parseJsonSafely = async (res) => {
@@ -22,6 +21,26 @@ const Login = ({ onLoginSuccess }) => {
     } catch {
       return {};
     }
+  };
+
+  // Einfache Session-Token generieren (da Backend keine JWT implementiert hat)
+  const generateSessionToken = () => {
+    return 'session_' + Math.random().toString(36).substring(2) + '_' + Date.now();
+  };
+
+  // Konsistente User-Speicherung für MFA-Setup Kompatibilität
+  const saveUserData = (userData) => {
+    const sessionToken = generateSessionToken();
+    
+    // Token speichern (für MFA-Setup benötigt)
+    localStorage.setItem('accessToken', sessionToken);
+    
+    // User-Daten in allen erwarteten Speicherorten
+    localStorage.setItem('currentUser', JSON.stringify(userData)); // MFA-Setup erwartet das
+    localStorage.setItem('user', JSON.stringify(userData));        // Backup
+    localStorage.setItem('userData', JSON.stringify(userData));    // Legacy
+    
+    console.log('User-Daten gespeichert:', userData);
   };
 
   const handleSubmit = async (e) => {
@@ -45,22 +64,27 @@ const Login = ({ onLoginSuccess }) => {
       }
 
       // MFA verlangt?
-      if (data.status === 'MFA_REQUIRED' || data.mfaRequired === true) {
+      if (data.status === 'MFA_REQUIRED') {
         setMfaRequired(true);
-        setPendingUserId(data.user_id || data.userId || data.id || null);
-        setChallengeId(data.challengeId || data.mfa_challenge_id || null);
-        setTempToken(data.tempToken || data.mfaToken || null);
+        setPendingUserId(data.user_id);
+        setPendingUserEmail(data.email);
         setMfaToken('');
+        
+        // Temporären Token für MFA-Verify setzen
+        const tempToken = generateSessionToken();
+        localStorage.setItem('accessToken', tempToken);
         return;
       }
 
       // Erfolgreich ohne MFA
-      if (data.accessToken) localStorage.setItem('accessToken', data.accessToken);
-      if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
-      if (data.user) localStorage.setItem('userData', JSON.stringify(data.user));
-
-      onLoginSuccess?.(data.user || null);
-    } catch {
+      if (data.user) {
+        saveUserData(data.user);
+        onLoginSuccess?.(data.user);
+      } else {
+        setError('Keine Benutzerdaten erhalten');
+      }
+    } catch (err) {
+      console.error('Login Fehler:', err);
       setError('Serverfehler – bitte später erneut versuchen');
     } finally {
       setLoading(false);
@@ -73,19 +97,19 @@ const Login = ({ onLoginSuccess }) => {
     setLoading(true);
 
     try {
-      const headers = { 'Content-Type': 'application/json' };
-      // Falls Backend für die Verify-Route Auth braucht (temporär oder final):
-      const bearer = tempToken || localStorage.getItem('accessToken');
-      if (bearer) headers.Authorization = `Bearer ${bearer}`;
-
+      // Token aus localStorage holen (wurde im ersten Login-Step gesetzt)
+      const accessToken = localStorage.getItem('accessToken');
+      
       const res = await fetch('/api/auth/mfa/verify', {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': accessToken ? `Bearer ${accessToken}` : undefined,
+        },
         credentials: 'include',
         body: JSON.stringify({
           user_id: pendingUserId,
           token: mfaToken,
-          challenge_id: challengeId, // harmless wenn Backend es ignoriert
         }),
       });
 
@@ -97,12 +121,14 @@ const Login = ({ onLoginSuccess }) => {
       }
 
       // Erfolgreich mit MFA
-      if (data.accessToken) localStorage.setItem('accessToken', data.accessToken);
-      if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
-      if (data.user) localStorage.setItem('userData', JSON.stringify(data.user));
-
-      onLoginSuccess?.(data.user || null);
-    } catch {
+      if (data.user) {
+        saveUserData(data.user);
+        onLoginSuccess?.(data.user);
+      } else {
+        setError('Keine Benutzerdaten nach MFA erhalten');
+      }
+    } catch (err) {
+      console.error('MFA Verify Fehler:', err);
       setError('Serverfehler – bitte später erneut versuchen');
     } finally {
       setLoading(false);
@@ -112,10 +138,11 @@ const Login = ({ onLoginSuccess }) => {
   const resetToLogin = () => {
     setMfaRequired(false);
     setPendingUserId(null);
-    setChallengeId(null);
-    setTempToken(null);
+    setPendingUserEmail(null);
     setMfaToken('');
     setError('');
+    // AccessToken löschen, damit kein alter Token aktiv bleibt
+    localStorage.removeItem('accessToken');
   };
 
   return (
@@ -174,6 +201,11 @@ const Login = ({ onLoginSuccess }) => {
               <header className="head-form">
                 <h2>MFA bestätigen</h2>
                 <p>Bitte den 6-stelligen Code aus deiner Authenticator-App eingeben.</p>
+                {pendingUserEmail && (
+                  <p style={{ fontSize: '14px', color: '#666' }}>
+                    Anmeldung für: {pendingUserEmail}
+                  </p>
+                )}
               </header>
 
               <div className="field-set">
@@ -181,11 +213,17 @@ const Login = ({ onLoginSuccess }) => {
                   className="form-input"
                   type="text"
                   inputMode="numeric"
+                  pattern="[0-9]*"
                   maxLength={6}
                   placeholder="123456"
                   value={mfaToken}
                   onChange={(e) => setMfaToken(e.target.value.replace(/\D/g, ''))}
                   required
+                  style={{
+                    textAlign: 'center',
+                    fontSize: '18px',
+                    letterSpacing: '3px'
+                  }}
                 />
 
                 <button type="submit" className="log-in" disabled={loading || mfaToken.length !== 6}>
@@ -199,10 +237,15 @@ const Login = ({ onLoginSuccess }) => {
                   style={{ marginTop: 10 }}
                   disabled={loading}
                 >
-                  ← Zurück
+                  ← Zurück zum Login
                 </button>
 
                 {error && <p style={{ color: 'red', marginTop: 10 }}>{error}</p>}
+                
+                <div style={{ marginTop: 15, fontSize: '12px', color: '#999', textAlign: 'center' }}>
+                  Haben Sie keinen Zugriff auf Ihr Handy?<br />
+                  Verwenden Sie einen Ihrer Backup-Codes.
+                </div>
               </div>
             </div>
           </form>

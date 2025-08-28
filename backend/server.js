@@ -20,7 +20,7 @@ const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || '')
 const isProd = process.env.NODE_ENV === 'production';
 const corsOptions = isProd
   ? { origin: ALLOWED_ORIGINS.length ? ALLOWED_ORIGINS : false, credentials: true }
-  : { origin: true, credentials: true }; // dev: alle Origins
+  : { origin: true, credentials: true };
 
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
@@ -36,20 +36,24 @@ const dbConfig = {
 };
 const pool = new Pool(dbConfig);
 
-pool.connect((err, client, release) => {
-  console.log('🚀 Server läuft auf http://localhost:5000');
-  console.log('🌐 CORS aktiv für:', isProd ? (ALLOWED_ORIGINS.join(', ') || '(none)') : 'ALLE (dev)');
-  console.log('📊 Health Check: http://localhost:5000/api/health');
-  console.log('🔧 Mode:', process.env.NODE_ENV || 'development');
-  console.log('🗄️  DB Config:', { ...dbConfig, password: '***' });
-
-  if (err) {
-    console.error('❌ DB-Verbindung fehlgeschlagen:', err.message);
-  } else {
-    console.log('✅ DB verbunden:', client.database, '@', dbConfig.host + ':' + dbConfig.port);
-    release();
+/* ===================== Middleware für Token-Validierung ===================== */
+const verifyToken = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Ungültiger Access-Token. Bitte loggen Sie sich erneut ein.' });
   }
-});
+  
+  const token = authHeader.substring(7);
+  if (!token || token === 'fwhlwemwldung') {
+    return res.status(401).json({ error: 'Ungültiger Access-Token. Bitte loggen Sie sich erneut ein.' });
+  }
+  
+  // TODO: Hier später JWT-Validierung hinzufügen falls gewünscht
+  // const decoded = jwt.verify(token, JWT_SECRET);
+  // req.user = decoded;
+  
+  next();
+};
 
 /* ===================== E-Mail Konfiguration ===================== */
 const emailConfig = {
@@ -197,6 +201,17 @@ const getFullOnboardingData = async (onboardingId) => {
   }
 };
 
+function generateBackupCodes(n = 8) {
+  const out = [];
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  for (let i = 0; i < n; i++) {
+    let c = '';
+    for (let j = 0; j < 10; j++) c += alphabet[Math.floor(Math.random() * alphabet.length)];
+    out.push(c.slice(0,5) + '-' + c.slice(5));
+  }
+  return out;
+}
+
 /* ===================== Health / Test ===================== */
 app.get('/api/health', async (req, res) => {
   try {
@@ -222,7 +237,7 @@ app.get('/api/test', (req, res) => {
   res.json({ message: 'Backend läuft!', timestamp: new Date().toISOString() });
 });
 
-/* ===================== Auth (simple) ===================== */
+/* ===================== Auth Routes ===================== */
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, passwort } = req.body;
@@ -235,7 +250,6 @@ app.post('/api/auth/login', async (req, res) => {
     if (u.passwort !== passwort) return res.status(401).json({ error: 'Falsches Passwort' });
 
     if (u.mfa_enabled) {
-      // Passwort ok, MFA erforderlich
       return res.status(200).json({
         status: 'MFA_REQUIRED',
         user_id: u.mitarbeiter_id,
@@ -243,7 +257,6 @@ app.post('/api/auth/login', async (req, res) => {
       });
     }
 
-    // Kein MFA -> direkt einloggen
     res.json({
       message: 'Login erfolgreich',
       user: {
@@ -280,8 +293,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// MFA-Setup starten: erwartet { user_id }
-app.post('/api/auth/mfa/setup/start', async (req, res) => {
+app.post('/api/auth/mfa/setup/start', verifyToken, async (req, res) => {
   try {
     const { user_id } = req.body;
     if (!user_id) return res.status(400).json({ error: 'user_id ist erforderlich' });
@@ -294,14 +306,12 @@ app.post('/api/auth/mfa/setup/start', async (req, res) => {
 
     const email = u.rows[0].email;
 
-    // Secret erzeugen (Base32) + otpauth URL
     const secret = speakeasy.generateSecret({
       length: 20,
       name: `${MFA_ISSUER}:${email}`,
       issuer: MFA_ISSUER
     });
 
-    // Manche speakeasy-Versionen setzen otpauth_url, ansonsten sicherstellen:
     const otpauth = secret.otpauth_url || speakeasy.otpauthURL({
       secret: secret.base32,
       label: `${MFA_ISSUER}:${email}`,
@@ -309,34 +319,25 @@ app.post('/api/auth/mfa/setup/start', async (req, res) => {
       encoding: 'base32'
     });
 
-    // QR-Code als DataURL
     const qrDataUrl = await QRCode.toDataURL(otpauth);
 
-    // Temporäres Secret speichern, bis Nutzer Code verifiziert
     await pool.query(
       'UPDATE mitarbeiter SET mfa_temp_secret=$1 WHERE mitarbeiter_id=$2',
       [secret.base32, user_id]
     );
 
-    res.json({ otpauth, qrDataUrl });
+    res.json({ 
+      otpauth, 
+      qrDataUrl,
+      secret: secret.base32
+    });
   } catch (e) {
     console.error('MFA setup start error:', e);
     res.status(500).json({ error: 'Fehler beim Starten des MFA-Setups' });
   }
 });
 
-function generateBackupCodes(n = 8) {
-  const out = [];
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  for (let i = 0; i < n; i++) {
-    let c = '';
-    for (let j = 0; j < 10; j++) c += alphabet[Math.floor(Math.random() * alphabet.length)];
-    out.push(c.slice(0,5) + '-' + c.slice(5));
-  }
-  return out;
-}
-
-app.post('/api/auth/mfa/setup/verify', async (req, res) => {
+app.post('/api/auth/mfa/setup/verify', verifyToken, async (req, res) => {
   const client = await pool.connect();
   try {
     const { user_id, token } = req.body;
@@ -355,7 +356,7 @@ app.post('/api/auth/mfa/setup/verify', async (req, res) => {
       secret: tempSecret,
       encoding: 'base32',
       token: String(token),
-      window: 1 // leichte Zeitdrift erlauben
+      window: 1
     });
 
     if (!ok) return res.status(400).json({ error: 'Ungültiger Code' });
@@ -367,11 +368,11 @@ app.post('/api/auth/mfa/setup/verify', async (req, res) => {
       `UPDATE mitarbeiter
          SET mfa_secret=$1, mfa_temp_secret=NULL, mfa_enabled=true, mfa_enrolled_at=NOW(), mfa_backup_codes=$2
        WHERE mitarbeiter_id=$3`,
-      [tempSecret, backupCodes, user_id]
+      [tempSecret, JSON.stringify(backupCodes), user_id]  // ← FIX: JSON.stringify hinzugefügt
     );
     await client.query('COMMIT');
 
-    res.json({ success: true, backup_codes: backupCodes }); // nur jetzt einmalig anzeigen
+    res.json({ success: true, backup_codes: backupCodes });
   } catch (e) {
     await client.query('ROLLBACK');
     console.error('MFA setup verify error:', e);
@@ -404,13 +405,24 @@ app.post('/api/auth/mfa/verify', async (req, res) => {
         window: 1
       });
     } else if (backup_code) {
-      const idx = (u.mfa_backup_codes || []).findIndex(c => c === backup_code);
+      // FIX: mfa_backup_codes korrekt als JSON parsen
+      let backupCodes = [];
+      try {
+        backupCodes = Array.isArray(u.mfa_backup_codes) 
+          ? u.mfa_backup_codes 
+          : JSON.parse(u.mfa_backup_codes || '[]');
+      } catch (parseError) {
+        console.error('Error parsing backup codes:', parseError);
+        backupCodes = [];
+      }
+
+      const idx = backupCodes.findIndex(c => c === backup_code);
       if (idx >= 0) {
-        const newCodes = [...u.mfa_backup_codes];
-        newCodes.splice(idx, 1); // verbrauchen
+        const newCodes = [...backupCodes];
+        newCodes.splice(idx, 1);
         await pool.query(
           'UPDATE mitarbeiter SET mfa_backup_codes=$1 WHERE mitarbeiter_id=$2',
-          [newCodes, user_id]
+          [JSON.stringify(newCodes), user_id]  // ← FIX: JSON.stringify hinzugefügt
         );
         verified = true;
       }
@@ -434,7 +446,6 @@ app.post('/api/auth/mfa/verify', async (req, res) => {
     res.status(500).json({ error: 'Fehler bei MFA-Überprüfung' });
   }
 });
-
 
 /* ===================== Customers ===================== */
 app.get('/api/customers', async (req, res) => {
@@ -800,19 +811,16 @@ app.post('/api/onboarding', async (req, res) => {
 
     await client.query('COMMIT');
     
-    // OPTIONAL: Automatischer E-Mail-Versand
     if (process.env.AUTO_SEND_EMAIL === 'true') {
       try {
         const defaultEmails = (process.env.DEFAULT_RECIPIENTS || '').split(',').filter(Boolean);
         if (defaultEmails.length) {
-          // Kundendaten für E-Mail holen
           const customerData = await pool.query(
             'SELECT firmenname FROM customers WHERE kunden_id = $1',
             [kunde_id]
           );
           
           if (customerData.rows.length) {
-            // Kurz warten, dann E-Mail senden
             setTimeout(async () => {
               try {
                 const response = await fetch(`http://localhost:${process.env.PORT || 5000}/api/onboarding/${onboardingId}/send-email`, {
