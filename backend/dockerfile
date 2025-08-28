@@ -1,20 +1,8 @@
-FROM node:20-alpine AS build
+FROM node:20
+
 WORKDIR /app
-
-RUN apk add --no-cache python3 make g++ \
- && npm config set fund false \
- && npm config set audit false
-
 COPY package*.json ./
-RUN --mount=type=cache,target=/root/.npm \
-    if [ -f package-lock.json ]; then \
-      npm ci --verbose || npm install --legacy-peer-deps --verbose; \
-    else \
-      npm install --legacy-peer-deps --verbose; \
-    fi
-
+RUN npm install
 COPY . .
-RUN npm run build || echo "no backend build step"
 
-EXPOSE 5000
 CMD ["node", "server.js"]

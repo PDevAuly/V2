@@ -6,6 +6,8 @@ import Login from './pages/login';
 import Register from './pages/register';
 import Dashboard from './pages/dashboard';
 import MFASetup from './components/MFASetup';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 
 import './pages/login.css';
 import './pages/register.css';
@@ -94,6 +96,18 @@ export default function App() {
         <Route
           path="/register"
           element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Register />}
+        />
+
+        {/* Passwort vergessen Route (nur für nicht eingeloggte Benutzer) */}
+        <Route
+          path="/forgot-password"
+          element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <ForgotPassword />}
+        />
+
+        {/* Passwort zurücksetzen Route (nur für nicht eingeloggte Benutzer) */}
+        <Route
+          path="/reset-password"
+          element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <ResetPassword />}
         />
 
         {/* Dashboard nur mit Auth, User an Dashboard weiterreichen */}

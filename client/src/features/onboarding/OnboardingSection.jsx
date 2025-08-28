@@ -111,17 +111,22 @@ function Step2({
   // State für Systemanforderungen (pro Software-Eintrag)
   const [requirementDetails, setRequirementDetails] = useState({});
 
-  // Funktion zum Hinzufügen eines neuen Software-Eintrags
-  const addSoftwareEntry = () => {
-    const softwareList = infrastructureData.software?.softwareList || [];
-    setInfrastructureData({
-      ...infrastructureData,
+  /// Utility function for generating unique IDs
+const generateId = () => Date.now() + Math.random().toString(36).substr(2, 9);
+
+// Funktion zum Hinzufügen eines neuen Software-Eintrags
+const addSoftwareEntry = () => {
+  setInfrastructureData(prevData => {
+    const softwareList = prevData.software?.softwareList || [];
+    
+    return {
+      ...prevData,
       software: {
-        ...infrastructureData.software,
+        ...prevData.software,
         softwareList: [
           ...softwareList,
           {
-            id: Date.now(),
+            id: generateId(), // More unique ID
             name: '',
             licenses: '',
             critical: '',
@@ -132,93 +137,130 @@ function Step2({
           }
         ]
       }
-    });
-  };
+    };
+  });
+};
 
-  // Funktion zum Entfernen eines Software-Eintrags
-  const removeSoftwareEntry = (index) => {
-    const updatedList = infrastructureData.software.softwareList.filter((_, i) => i !== index);
-    setInfrastructureData({
-      ...infrastructureData,
+// Funktion zum Entfernen eines Software-Eintrags
+const removeSoftwareEntry = (index) => {
+  setInfrastructureData(prevData => {
+    const updatedList = prevData.software.softwareList.filter((_, i) => i !== index);
+    
+    return {
+      ...prevData,
       software: { 
-        ...infrastructureData.software, 
+        ...prevData.software, 
         softwareList: updatedList 
       }
-    });
-    
-    // Entferne auch die zugehörigen Requirement-Details
-    const newRequirementDetails = {...requirementDetails};
-    delete newRequirementDetails[index];
-    setRequirementDetails(newRequirementDetails);
-  };
-
-  // Funktion zum Aktualisieren eines Software-Eintrags
-  const updateSoftwareEntry = (index, field, value) => {
-    const updatedList = [...infrastructureData.software.softwareList];
-    updatedList[index] = { ...updatedList[index], [field]: value };
-    setInfrastructureData({
-      ...infrastructureData,
-      software: { ...infrastructureData.software, softwareList: updatedList }
-    });
-  };
-
-  // Funktion zum Hinzufügen einer Anforderung zu einem bestimmten Software-Eintrag
-  const addRequirement = (index) => {
-    const detailKey = `${index}`;
-    const requirementDetail = requirementDetails[detailKey] || {};
-    
-    if (requirementDetail.type && requirementDetail.detail) {
-      const updatedList = [...infrastructureData.software.softwareList];
-      updatedList[index] = {
-        ...updatedList[index],
-        requirements: [
-          ...(updatedList[index].requirements || []),
-          { type: requirementDetail.type, detail: requirementDetail.detail }
-        ]
-      };
-      
-      setInfrastructureData({
-        ...infrastructureData,
-        software: { ...infrastructureData.software, softwareList: updatedList }
-      });
-      
-      // Zurücksetzen der Eingabefelder für diesen Eintrag
-      setRequirementDetails({
-        ...requirementDetails,
-        [detailKey]: { type: '', detail: '' }
-      });
-    }
-  };
-
-  // Funktion zum Entfernen einer Anforderung von einem bestimmten Software-Eintrag
-  const removeRequirement = (softwareIndex, requirementIndex) => {
-    const updatedList = [...infrastructureData.software.softwareList];
-    const updatedRequirements = [...(updatedList[softwareIndex].requirements || [])];
-    updatedRequirements.splice(requirementIndex, 1);
-    
-    updatedList[softwareIndex] = {
-      ...updatedList[softwareIndex],
-      requirements: updatedRequirements
     };
+  });
+  
+  // Entferne auch die zugehörigen Requirement-Details
+  setRequirementDetails(prevDetails => {
+    const newRequirementDetails = {...prevDetails};
+    delete newRequirementDetails[index];
+    return newRequirementDetails;
+  });
+};
+
+// Funktion zum Aktualisieren eines Software-Eintrags
+const updateSoftwareEntry = (index, field, value) => {
+  setInfrastructureData(prevData => {
+    const updatedList = [...prevData.software.softwareList];
     
-    setInfrastructureData({
-      ...infrastructureData,
-      software: { ...infrastructureData.software, softwareList: updatedList }
-    });
-  };
+    // Validate index to prevent errors
+    if (index >= 0 && index < updatedList.length) {
+      updatedList[index] = { ...updatedList[index], [field]: value };
+      
+      return {
+        ...prevData,
+        software: { ...prevData.software, softwareList: updatedList }
+      };
+    }
+    
+    return prevData; // Return unchanged if index is invalid
+  });
+};
 
-  // Funktion zum Aktualisieren der Requirement-Details
-  const updateRequirementDetail = (index, field, value) => {
-    const detailKey = `${index}`;
-    setRequirementDetails({
-      ...requirementDetails,
-      [detailKey]: {
-        ...(requirementDetails[detailKey] || {}),
-        [field]: value
+// Funktion zum Hinzufügen einer Anforderung zu einem bestimmten Software-Eintrag
+const addRequirement = (index) => {
+  const detailKey = `${index}`;
+  const requirementDetail = requirementDetails[detailKey] || {};
+  
+  if (requirementDetail.type && requirementDetail.detail) {
+    setInfrastructureData(prevData => {
+      const updatedList = [...prevData.software.softwareList];
+      
+      // Validate index
+      if (index >= 0 && index < updatedList.length) {
+        updatedList[index] = {
+          ...updatedList[index],
+          requirements: [
+            ...(updatedList[index].requirements || []),
+            { 
+              id: generateId(), // Add ID for individual requirement management
+              type: requirementDetail.type, 
+              detail: requirementDetail.detail 
+            }
+          ]
+        };
+        
+        return {
+          ...prevData,
+          software: { ...prevData.software, softwareList: updatedList }
+        };
       }
+      
+      return prevData;
     });
-  };
+    
+    // Zurücksetzen der Eingabefelder für diesen Eintrag
+    setRequirementDetails(prevDetails => ({
+      ...prevDetails,
+      [detailKey]: { type: '', detail: '' }
+    }));
+  }
+};
 
+// Funktion zum Entfernen einer Anforderung von einem bestimmten Software-Eintrag
+const removeRequirement = (softwareIndex, requirementIndex) => {
+  setInfrastructureData(prevData => {
+    const updatedList = [...prevData.software.softwareList];
+    
+    // Validate indices
+    if (softwareIndex >= 0 && softwareIndex < updatedList.length) {
+      const updatedRequirements = [...(updatedList[softwareIndex].requirements || [])];
+      
+      if (requirementIndex >= 0 && requirementIndex < updatedRequirements.length) {
+        updatedRequirements.splice(requirementIndex, 1);
+        
+        updatedList[softwareIndex] = {
+          ...updatedList[softwareIndex],
+          requirements: updatedRequirements
+        };
+        
+        return {
+          ...prevData,
+          software: { ...prevData.software, softwareList: updatedList }
+        };
+      }
+    }
+    
+    return prevData;
+  });
+};
+
+// Funktion zum Aktualisieren der Requirement-Details
+const updateRequirementDetail = (index, field, value) => {
+  const detailKey = `${index}`;
+  setRequirementDetails(prevDetails => ({
+    ...prevDetails,
+    [detailKey]: {
+      ...(prevDetails[detailKey] || {}),
+      [field]: value
+    }
+  }));
+};
   return (
     <div className="space-y-6">
       {/* Netzwerk */}
@@ -1015,24 +1057,27 @@ function Step2({
                   </div>
 
                   {/* Verwendete Applikationen */}
-                  <div>
-                    <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
-                      Wichtige Applikationen (eine pro Zeile)
-                    </label>
-                    <textarea
-                      value={software.verwendete_applikationen_text || ''}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        updateSoftwareEntry(index, 'verwendete_applikationen_text', value);
-                        updateSoftwareEntry(index, 'verwendete_applikationen', 
-                          value.split('\n').map(s => s.trim()).filter(Boolean)
-                        );
-                      }}
-                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
-                      rows="5"
-                      placeholder={`z.B.\nMicrosoft Office\nAdobe Creative Cloud\nSage 50`}
-                    />
-                  </div>
+<div>
+  <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+    Wichtige Applikationen (eine pro Zeile)
+  </label>
+  <textarea
+  value={software.verwendete_applikationen_text || ''}
+  onChange={(e) => {
+    const value = e.target.value;
+    updateSoftwareEntry(index, 'verwendete_applikationen_text', value);
+    updateSoftwareEntry(
+      index,
+      'verwendete_applikationen',
+      value.split('\n').map(s => s.trim()).filter(Boolean)
+    );
+  }}
+  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${inputClass}`}
+  rows="5"
+  placeholder={`z.B.\nMicrosoft Office\nAdobe Creative Cloud\nSage 50`}
+/>
+
+</div>
                 </div>
               </div>
             ))

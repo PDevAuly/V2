@@ -186,9 +186,9 @@ const Login = ({ onLoginSuccess }) => {
               </div>
 
               <div className="other">
-                <button type="button" className="btn submits frgt-pass">
+                <Link to="/forgot-password" className="btn submits frgt-pass">
                   Passwort vergessen ?
-                </button>
+                </Link>
                 <Link to="/register" className="btn submits sign-up">
                   Registrieren
                 </Link>

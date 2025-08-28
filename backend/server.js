@@ -6,6 +6,9 @@ const nodemailer = require('nodemailer');
 require('dotenv').config();
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
+const crypto = require('crypto');
+const bcrypt = require('bcrypt');
+const SALT_ROUNDS = 12;
 
 const MFA_ISSUER = process.env.MFA_ISSUER || 'Pauly Dashboard';
 
@@ -79,6 +82,14 @@ const normalizeJSONB = (val) => {
     try { return JSON.parse(val); } catch { return { text: val }; }
   }
   return { value: val };
+};
+
+const hashPassword = async (password) => {
+  return await bcrypt.hash(password, SALT_ROUNDS);
+};
+
+const verifyPassword = async (password, hash) => {
+  return await bcrypt.compare(password, hash);
 };
 
 // Funktion: Vollständige Onboarding-Daten abrufen
@@ -642,6 +653,170 @@ app.get('/api/kalkulationen/stats', async (req, res) => {
     res.status(500).json({ error: 'Fehler beim Abrufen der Statistiken' });
   }
 });
+
+
+// Passwort vergessen - Reset-Link senden
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({ error: 'E-Mail ist erforderlich' });
+    }
+    
+    const user = await pool.query(
+      'SELECT mitarbeiter_id, email, vorname, name FROM mitarbeiter WHERE LOWER(email) = LOWER($1)',
+      [email]
+    );
+    
+    // Aus Sicherheitsgründen immer "erfolgreich" zurückmelden
+    if (!user.rows.length) {
+      return res.json({ 
+        message: 'Falls die E-Mail-Adresse in unserem System existiert, wurde ein Reset-Link gesendet.' 
+      });
+    }
+    
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetExpires = new Date(Date.now() + 3600000); // 1 Stunde gültig
+    
+    await pool.query(
+      'UPDATE mitarbeiter SET reset_token = $1, reset_expires = $2 WHERE mitarbeiter_id = $3',
+      [resetToken, resetExpires, user.rows[0].mitarbeiter_id]
+    );
+    
+    // Reset-URL generieren
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
+    
+    // E-Mail senden
+    const mailOptions = {
+      from: process.env.SMTP_FROM || emailConfig.auth.user,
+      to: email,
+      subject: 'Pauly Dashboard - Passwort zurücksetzen',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #2563eb;">Passwort zurücksetzen</h2>
+          
+          <p>Hallo ${user.rows[0].vorname},</p>
+          
+          <p>Sie haben eine Passwort-Zurücksetzung für Ihr Pauly Dashboard Konto angefordert.</p>
+          
+          <div style="margin: 30px 0;">
+            <a href="${resetUrl}" 
+               style="background-color: #2563eb; color: white; padding: 12px 24px; 
+                      text-decoration: none; border-radius: 5px; display: inline-block;">
+              Passwort zurücksetzen
+            </a>
+          </div>
+          
+          <p><strong>Wichtige Informationen:</strong></p>
+          <ul>
+            <li>Dieser Link ist nur 1 Stunde gültig</li>
+            <li>Der Link kann nur einmal verwendet werden</li>
+            <li>Falls Sie diese E-Mail nicht angefordert haben, ignorieren Sie sie</li>
+          </ul>
+          
+          <p>Alternativ können Sie auch diesen Link kopieren:<br>
+          <small style="color: #666; word-break: break-all;">${resetUrl}</small></p>
+          
+          <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+          <p style="color: #666; font-size: 12px;">
+            Diese E-Mail wurde automatisch generiert. Antworten Sie nicht auf diese E-Mail.
+          </p>
+        </div>
+      `
+    };
+    
+    await transporter.sendMail(mailOptions);
+    
+    console.log(`Password reset requested for: ${email}`);
+    
+    res.json({ 
+      message: 'Falls die E-Mail-Adresse in unserem System existiert, wurde ein Reset-Link gesendet.' 
+    });
+    
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ error: 'Fehler beim Senden der Reset-E-Mail' });
+  }
+});
+
+// Token validieren (für Frontend-Prüfung)
+app.post('/api/auth/validate-reset-token', async (req, res) => {
+  try {
+    const { token } = req.body;
+    
+    if (!token) {
+      return res.status(400).json({ error: 'Token ist erforderlich' });
+    }
+    
+    const user = await pool.query(
+      'SELECT mitarbeiter_id, email, vorname FROM mitarbeiter WHERE reset_token = $1 AND reset_expires > NOW()',
+      [token]
+    );
+    
+    if (!user.rows.length) {
+      return res.status(400).json({ error: 'Ungültiger oder abgelaufener Reset-Token' });
+    }
+    
+    res.json({ 
+      valid: true, 
+      email: user.rows[0].email,
+      name: user.rows[0].vorname 
+    });
+    
+  } catch (error) {
+    console.error('Validate reset token error:', error);
+    res.status(500).json({ error: 'Fehler bei der Token-Validierung' });
+  }
+});
+
+// Neues Passwort setzen
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+    
+    if (!token || !newPassword) {
+      return res.status(400).json({ error: 'Token und neues Passwort sind erforderlich' });
+    }
+    
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'Passwort muss mindestens 6 Zeichen lang sein' });
+    }
+    
+    const user = await pool.query(
+      'SELECT mitarbeiter_id, email, vorname FROM mitarbeiter WHERE reset_token = $1 AND reset_expires > NOW()',
+      [token]
+    );
+    
+    if (!user.rows.length) {
+      return res.status(400).json({ error: 'Ungültiger oder abgelaufener Reset-Token' });
+    }
+    
+    // Passwort hashen
+    const hashedPassword = await hashPassword(newPassword);
+    
+    // Passwort updaten und Reset-Token löschen
+    await pool.query(`
+      UPDATE mitarbeiter 
+      SET passwort_hash = $1, 
+          passwort = NULL, 
+          reset_token = NULL, 
+          reset_expires = NULL,
+          updated_at = NOW()
+      WHERE mitarbeiter_id = $2
+    `, [hashedPassword, user.rows[0].mitarbeiter_id]);
+    
+    console.log(`Password reset completed for: ${user.rows[0].email}`);
+    
+    res.json({ message: 'Passwort erfolgreich zurückgesetzt' });
+    
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Fehler beim Zurücksetzen des Passworts' });
+  }
+});
+
 
 /* ===================== Onboarding ===================== */
 app.post('/api/onboarding', async (req, res) => {

@@ -36,6 +36,10 @@ CREATE TABLE IF NOT EXISTS mitarbeiter (
   mfa_enrolled_at TIMESTAMPTZ,
   mfa_backup_codes JSONB,
   
+  -- Reset-Token
+  reset_token    TEXT,
+  reset_expires  TIMESTAMPTZ,
+  
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   
@@ -48,6 +52,7 @@ CREATE TABLE IF NOT EXISTS mitarbeiter (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mitarbeiter_email_unique ON mitarbeiter (LOWER(email));
 CREATE INDEX IF NOT EXISTS idx_mitarbeiter_last_login ON mitarbeiter (last_login);
 CREATE INDEX IF NOT EXISTS idx_mitarbeiter_locked ON mitarbeiter (locked_until) WHERE locked_until IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_mitarbeiter_reset_token ON mitarbeiter (reset_token) WHERE reset_token IS NOT NULL;
 
 -- Updated-Trigger
 DROP TRIGGER IF EXISTS trg_mitarbeiter_updated ON mitarbeiter;
@@ -93,7 +98,8 @@ CREATE TABLE IF NOT EXISTS customer_contacts (
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX customer_contacts_kunde_idx ON customer_contacts(kunden_id);
+CREATE INDEX IF NOT EXISTS customer_contacts_kunde_idx ON customer_contacts(kunden_id);
+CREATE INDEX IF NOT EXISTS idx_customer_contacts_email ON customer_contacts (LOWER(email));
 
 CREATE TRIGGER trg_customer_contacts_updated
 BEFORE UPDATE ON customer_contacts
@@ -109,7 +115,7 @@ CREATE TABLE IF NOT EXISTS onboarding (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX onboarding_kunde_idx ON onboarding(kunden_id);
+CREATE INDEX IF NOT EXISTS onboarding_kunde_idx ON onboarding(kunden_id);
 CREATE INDEX IF NOT EXISTS idx_onboarding_created_at ON onboarding (created_at DESC);
 
 CREATE TRIGGER trg_onboarding_updated
@@ -131,7 +137,7 @@ CREATE TABLE IF NOT EXISTS onboarding_netzwerk (
   created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX netzwerk_onboarding_idx ON onboarding_netzwerk(onboarding_id);
+CREATE INDEX IF NOT EXISTS netzwerk_onboarding_idx ON onboarding_netzwerk(onboarding_id);
 
 CREATE TRIGGER trg_onboarding_netzwerk_updated
 BEFORE UPDATE ON onboarding_netzwerk
@@ -152,7 +158,7 @@ CREATE TABLE IF NOT EXISTS onboarding_hardware (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX hardware_onboarding_idx ON onboarding_hardware(onboarding_id);
+CREATE INDEX IF NOT EXISTS hardware_onboarding_idx ON onboarding_hardware(onboarding_id);
 
 CREATE TRIGGER trg_onboarding_hardware_updated
 BEFORE UPDATE ON onboarding_hardware
@@ -172,7 +178,7 @@ CREATE TABLE IF NOT EXISTS onboarding_mail (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX mail_onboarding_idx ON onboarding_mail(onboarding_id);
+CREATE INDEX IF NOT EXISTS mail_onboarding_idx ON onboarding_mail(onboarding_id);
 
 CREATE TRIGGER trg_onboarding_mail_updated
 BEFORE UPDATE ON onboarding_mail
@@ -194,7 +200,7 @@ CREATE TABLE IF NOT EXISTS onboarding_software (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX software_onboarding_idx ON onboarding_software(onboarding_id);
+CREATE INDEX IF NOT EXISTS software_onboarding_idx ON onboarding_software(onboarding_id);
 
 CREATE TRIGGER trg_onboarding_software_updated
 BEFORE UPDATE ON onboarding_software
@@ -209,7 +215,7 @@ CREATE TABLE IF NOT EXISTS onboarding_software_requirements (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX swreq_software_idx ON onboarding_software_requirements(software_id);
+CREATE INDEX IF NOT EXISTS swreq_software_idx ON onboarding_software_requirements(software_id);
 
 CREATE TRIGGER trg_swreq_updated
 BEFORE UPDATE ON onboarding_software_requirements
@@ -223,7 +229,7 @@ CREATE TABLE IF NOT EXISTS onboarding_software_apps (
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX swapps_software_idx ON onboarding_software_apps(software_id);
+CREATE INDEX IF NOT EXISTS swapps_software_idx ON onboarding_software_apps(software_id);
 
 CREATE TRIGGER trg_swapps_updated
 BEFORE UPDATE ON onboarding_software_apps
@@ -242,7 +248,7 @@ CREATE TABLE IF NOT EXISTS onboarding_backup (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX backup_onboarding_idx ON onboarding_backup(onboarding_id);
+CREATE INDEX IF NOT EXISTS backup_onboarding_idx ON onboarding_backup(onboarding_id);
 
 CREATE TRIGGER trg_onboarding_backup_updated
 BEFORE UPDATE ON onboarding_backup
@@ -256,7 +262,7 @@ CREATE TABLE IF NOT EXISTS onboarding_sonstiges (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX sonstiges_onboarding_idx ON onboarding_sonstiges(onboarding_id);
+CREATE INDEX IF NOT EXISTS sonstiges_onboarding_idx ON onboarding_sonstiges(onboarding_id);
 
 CREATE TRIGGER trg_onboarding_sonstiges_updated
 BEFORE UPDATE ON onboarding_sonstiges
@@ -285,7 +291,7 @@ CREATE TABLE IF NOT EXISTS kalkulationen (
 );
 
 -- Performance-Indizes
-CREATE INDEX kalkulationen_kunde_datum_idx ON kalkulationen (kunden_id, datum DESC);
+CREATE INDEX IF NOT EXISTS kalkulationen_kunde_datum_idx ON kalkulationen (kunden_id, datum DESC);
 CREATE INDEX IF NOT EXISTS idx_kalkulationen_datum ON kalkulationen (datum DESC);
 CREATE INDEX IF NOT EXISTS idx_kalkulationen_status ON kalkulationen (status);
 
@@ -309,8 +315,8 @@ CREATE TABLE IF NOT EXISTS kalkulation_positionen (
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX pos_kalk_idx     ON kalkulation_positionen (kalkulations_id);
-CREATE INDEX pos_section_idx  ON kalkulation_positionen (section);
+CREATE INDEX IF NOT EXISTS pos_kalk_idx ON kalkulation_positionen (kalkulations_id);
+CREATE INDEX IF NOT EXISTS pos_section_idx ON kalkulation_positionen (section);
 
 CREATE TRIGGER trg_kalk_pos_updated
 BEFORE UPDATE ON kalkulation_positionen
