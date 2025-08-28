@@ -1,9 +1,23 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 
+
+
+COPY . .
+RUN npm run build || echo "no backend build step"
+
+
 RUN apk add --no-cache python3 make g++ \
  && npm config set fund false \
  && npm config set audit false
+
+ COPY . .
+
+# Install react-scripts specifically
+RUN npm install react-scripts --save
+
+# Run the build command
+RUN npm run build
 
 COPY package*.json ./
 RUN --mount=type=cache,target=/root/.npm \
