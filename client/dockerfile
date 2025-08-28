@@ -1,5 +1,7 @@
 FROM node:20-alpine AS build
 WORKDIR /app
+
+RUN npm run build
 RUN npm config set fund false && npm config set audit false
 
 COPY package*.json ./
@@ -11,7 +13,7 @@ RUN --mount=type=cache,target=/root/.npm \
     fi
 
 COPY . .
-RUN npm run build
+
 
 FROM nginx:alpine
 COPY --from=build /app/build/ /usr/share/nginx/html/
