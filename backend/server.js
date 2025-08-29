@@ -68,6 +68,12 @@ const emailConfig = {
     pass: process.env.SMTP_PASS || 'dein-app-passwort'
   }
 };
+console.log('E-Mail Config:', {
+  host: emailConfig.host,
+  port: emailConfig.port,
+  user: emailConfig.auth.user,
+  pass: emailConfig.auth.pass ? '***GESETZT***' : 'NICHT GESETZT'
+});
 
 const transporter = nodemailer.createTransport(emailConfig);
 
@@ -737,6 +743,84 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     
   } catch (error) {
     console.error('Forgot password error:', error);
+    res.status(500).json({ error: 'Fehler beim Senden der Reset-E-Mail' });
+  }
+});
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    console.log('=== EMAIL DEBUG START ===');
+    console.log('Requested email:', email);
+    console.log('SMTP Config:', {
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT,
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS ? `${process.env.SMTP_PASS.substring(0,4)}****` : 'NICHT GESETZT'
+    });
+
+    // User lookup
+    const user = await pool.query(
+      'SELECT mitarbeiter_id, email, vorname, name FROM mitarbeiter WHERE LOWER(email) = LOWER($1)',
+      [email]
+    );
+    
+    console.log('User found:', user.rows.length > 0);
+    
+    if (!user.rows.length) {
+      console.log('=== EMAIL DEBUG END (no user) ===');
+      return res.json({ 
+        message: 'Falls die E-Mail-Adresse in unserem System existiert, wurde ein Reset-Link gesendet.' 
+      });
+    }
+
+    // Token generation
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    console.log('Generated token:', resetToken.substring(0, 10) + '...');
+    
+    // Database update
+    const resetExpires = new Date(Date.now() + 3600000);
+    await pool.query(
+      'UPDATE mitarbeiter SET reset_token = $1, reset_expires = $2 WHERE mitarbeiter_id = $3',
+      [resetToken, resetExpires, user.rows[0].mitarbeiter_id]
+    );
+    console.log('Database updated');
+
+    // Email sending
+    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
+    console.log('Reset URL:', resetUrl);
+
+    // Test transporter first
+    console.log('Testing transporter...');
+    await transporter.verify();
+    console.log('Transporter verified successfully');
+
+    const mailOptions = {
+      from: process.env.SMTP_FROM,
+      to: email,
+      subject: 'Pauly Dashboard - Passwort zurücksetzen',
+      text: `Reset-Link: ${resetUrl}`, // Einfache Text-Version für Debug
+      html: `<!-- Dein HTML hier -->`
+    };
+
+    console.log('Sending email...');
+    const result = await transporter.sendMail(mailOptions);
+    console.log('Email sent successfully!');
+    console.log('Message ID:', result.messageId);
+    console.log('=== EMAIL DEBUG END (success) ===');
+
+    res.json({ 
+      message: 'Falls die E-Mail-Adresse in unserem System existiert, wurde ein Reset-Link gesendet.' 
+    });
+    
+  } catch (error) {
+    console.error('=== EMAIL ERROR ===');
+    console.error('Error type:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Error code:', error.code);
+    console.error('Full error:', error);
+    console.error('=== EMAIL ERROR END ===');
+    
     res.status(500).json({ error: 'Fehler beim Senden der Reset-E-Mail' });
   }
 });

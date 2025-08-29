@@ -28,32 +28,32 @@ const ResetPassword = () => {
       return;
     }
 
+    const validateToken = async () => {
+      try {
+        const res = await fetch('/api/auth/validate-reset-token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token })
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          setTokenValid(true);
+          setUserEmail(data.email);
+        } else {
+          setTokenValid(false);
+          setError(data.error || 'Ungültiger oder abgelaufener Reset-Token');
+        }
+      } catch (err) {
+        console.error('Token validation error:', err);
+        setTokenValid(false);
+        setError('Fehler bei der Token-Validierung');
+      }
+    };
+
     validateToken();
   }, [token]);
-
-  const validateToken = async () => {
-    try {
-      const res = await fetch('/api/auth/validate-reset-token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token })
-      });
-
-      const data = await res.json();
-
-      if (res.ok) {
-        setTokenValid(true);
-        setUserEmail(data.email);
-      } else {
-        setTokenValid(false);
-        setError(data.error || 'Ungültiger oder abgelaufener Reset-Token');
-      }
-    } catch (err) {
-      console.error('Token validation error:', err);
-      setTokenValid(false);
-      setError('Fehler bei der Token-Validierung');
-    }
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();

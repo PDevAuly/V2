@@ -104,10 +104,10 @@ export default function App() {
           element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <ForgotPassword />}
         />
 
-        {/* Passwort zurücksetzen Route (nur für nicht eingeloggte Benutzer) */}
+        {/* Passwort zurücksetzen Route - für alle zugänglich */}
         <Route
           path="/reset-password"
-          element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <ResetPassword />}
+          element={<ResetPassword />}
         />
 
         {/* Dashboard nur mit Auth, User an Dashboard weiterreichen */}
