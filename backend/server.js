@@ -28,7 +28,7 @@ const validatePassword = (password) => {
     errors.push('Passwort muss mindestens einen Großbuchstaben enthalten');
   }
   
-  if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+  if (!/[!@#$%^&*()_+\-=\[]{};':"\\|,.<>\/?]/.test(password)) {
     errors.push('Passwort muss mindestens ein Sonderzeichen enthalten');
   }
   
@@ -239,6 +239,92 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
+// ========= Change Password (nach den bestehenden Auth-Routen einfügen) =========
+app.post('/api/auth/change-password', async (req, res) => {
+  try {
+    const { currentPassword, newPassword, user_id } = req.body;
+    
+    // Input-Validierung
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        error: 'Aktuelles und neues Passwort sind erforderlich'
+      });
+    }
+    
+    // TEMPORÄRE LÖSUNG: user_id wird im Request mitgeschickt
+    // TODO: Später durch echte Session/JWT-Authentifizierung ersetzen
+    if (!user_id) {
+      return res.status(400).json({
+        error: 'Benutzer-ID ist erforderlich'
+      });
+    }
+    
+    // Passwort-Validierung (verwende die bestehende Funktion)
+    const passwordErrors = validatePassword(newPassword);
+    if (passwordErrors.length > 0) {
+      return res.status(400).json({
+        error: 'Neues Passwort erfüllt nicht die Anforderungen',
+        details: passwordErrors
+      });
+    }
+    
+    // User aus Datenbank holen (richtige Tabelle: mitarbeiter)
+    const userResult = await pool.query(
+      'SELECT mitarbeiter_id, email, passwort_hash FROM mitarbeiter WHERE mitarbeiter_id = $1',
+      [user_id]
+    );
+    
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Benutzer nicht gefunden'
+      });
+    }
+    
+    const user = userResult.rows[0];
+    
+    // Aktuelles Passwort prüfen (verwende bestehende verifyPassword Funktion)
+    const isValid = await verifyPassword(currentPassword, user.passwort_hash);
+    
+    if (!isValid) {
+      return res.status(401).json({
+        error: 'Aktuelles Passwort ist falsch'
+      });
+    }
+    
+    // Prüfen ob neues Passwort identisch mit altem ist
+    const isSamePassword = await verifyPassword(newPassword, user.passwort_hash);
+    if (isSamePassword) {
+      return res.status(400).json({
+        error: 'Das neue Passwort muss sich vom aktuellen unterscheiden'
+      });
+    }
+    
+    // Neues Passwort hashen (verwende bestehende hashPassword Funktion)
+    const newHashedPassword = await hashPassword(newPassword);
+    
+    // Passwort in Datenbank aktualisieren (richtige Tabelle und Spalte)
+    await pool.query(
+      'UPDATE mitarbeiter SET passwort_hash = $1, updated_at = NOW() WHERE mitarbeiter_id = $2',
+      [newHashedPassword, user_id]
+    );
+    
+    // Erfolgreiche Antwort
+    res.json({
+      message: 'Passwort erfolgreich geändert',
+      timestamp: new Date().toISOString()
+    });
+    
+    // Audit-Log für Sicherheit
+    console.log(`Password changed for user: ${user.email} at ${new Date().toISOString()}`);
+    
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({
+      error: 'Serverfehler beim Ändern des Passworts'
+    });
+  }
+});
+
 // ========= MFA =========
 app.post('/api/auth/mfa/setup/start', verifyToken, async (req, res) => {
   try {
@@ -313,7 +399,7 @@ app.post('/api/auth/mfa/setup/verify', verifyToken, async (req, res) => {
 
     res.json({ success: true, backup_codes: backupCodes });
   } catch (e) {
-    await pool.query('ROLLBACK');
+    await client.query('ROLLBACK');
     console.error('MFA setup verify error:', e);
     res.status(500).json({ error: 'Fehler beim Verifizieren des MFA-Setups' });
   } finally {
@@ -655,7 +741,7 @@ app.get('/api/kalkulationen/stats', async (_req, res) => {
          WHERE date_trunc('month', datum) = date_trunc('month', CURRENT_DATE)
       `),
       pool.query(`
-        SELECT COALESCE(SUM(gesamtpreis),0)::float8 AS total_revenue
+        SELECT COALESCE(SUM(gesamtpreis),0::float8 AS total_revenue
           FROM kalkulationen
          WHERE date_trunc('month', datum) = date_trunc('month', CURRENT_DATE)
            AND status = 'erledigt'
