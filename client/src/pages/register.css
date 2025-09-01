@@ -132,3 +132,35 @@
     z-index: 1000;
     background: transparent;
 }
+.password-validation {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 15px;
+  margin: 10px 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.validation-title {
+  color: white !important;
+  font-weight: bold;
+  margin-bottom: 10px;
+  font-size: 14px;
+  text-align: left;
+}
+
+.validation-item {
+  color: white !important;
+  font-size: 13px;
+  margin: 5px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.validation-item.valid {
+  color: #4CAF50 !important;
+}
+
+.validation-item.invalid {
+  color: #ff6b6b !important;
+}

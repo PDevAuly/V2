@@ -1,5 +1,5 @@
 // src/pages/dashboard.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   User, Clock, RotateCcw, Calculator, TrendingUp, Network, ChevronRight,
   Sun, Moon, X, Save, Eye, Shield, EyeOff, Edit3
@@ -16,6 +16,9 @@ export default function Dashboard({ onLogout, userInfo }) {
   const [loading, setLoading] = useState(false);
   const [currentOnboardingStep, setCurrentOnboardingStep] = useState(1);
   const { isDark, toggle } = useDarkMode();
+  
+  // Ref für das Profil-Dropdown
+  const profileDropdownRef = useRef(null);
 
   // Passwort ändern States
   const [passwordData, setPasswordData] = useState({
@@ -26,41 +29,6 @@ export default function Dashboard({ onLogout, userInfo }) {
     showNewPassword: false,
     showConfirmPassword: false,
   });
-
-  // Alle Requests gehen relativ an /api → Nginx proxyt zum Backend
-  const API_BASE = '/api';
-  const euro = (n) =>
-    new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(Number(n || 0));
-
-  const fetchJSON = async (path, init) => {
-    const res = await fetch(`${API_BASE}${path}`, init);
-    if (!res.ok) {
-      const errorText = await res.text().catch(() => '');
-      throw new Error(`${res.status} ${res.statusText}${errorText ? ': ' + errorText : ''}`);
-    }
-    return res.json();
-  };
-
-  // --- E-Mail-Versand nach erfolgreichem Onboarding ---
-  const handleSendEmail = async (onboardingId) => {
-    const recipients = window.prompt('E-Mail-Adressen (komma-getrennt):');
-    if (!recipients) return;
-
-    try {
-      await fetchJSON(`/onboarding/${onboardingId}/send-email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email_addresses: recipients.split(',').map(s => s.trim()).filter(Boolean),
-          subject: `Onboarding-Daten: ${onboardingCustomerData.firmenname || 'Kunde'}`,
-          message: 'Im Anhang finden Sie die IT-Infrastruktur-Daten.'
-        })
-      });
-      alert('E-Mail erfolgreich versendet!');
-    } catch (error) {
-      alert('Fehler beim E-Mail-Versand: ' + error.message);
-    }
-  };
 
   // Daten-States (Projekte entfernt)
   const [stats, setStats] = useState({
@@ -107,7 +75,7 @@ export default function Dashboard({ onLogout, userInfo }) {
       seriennummer: '',
       standort: '',
       ip: '',
-      details_jsonb: {}, // JSON-Objekt
+      details_jsonb: {},
       informationen: '',
     },
     mail: {
@@ -140,6 +108,39 @@ export default function Dashboard({ onLogout, userInfo }) {
       text: '',
     },
   });
+
+  // Alle Requests gehen relativ an /api → Nginx proxyt zum Backend
+  const API_BASE = '/api';
+  const euro = (n) =>
+    new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(Number(n || 0));
+
+  const fetchJSON = async (path, init) => {
+    const res = await fetch(`${API_BASE}${path}`, init);
+    if (!res.ok) {
+      const errorText = await res.text().catch(() => '');
+      throw new Error(`${res.status} ${res.statusText}${errorText ? ': ' + errorText : ''}`);
+    }
+    return res.json();
+  };
+
+  // Click-Outside Handler für Profil-Dropdown
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target)) {
+        setShowProfile(false);
+      }
+    };
+
+    if (showProfile) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [showProfile]);
 
   useEffect(() => {
     loadDashboardData();
@@ -185,34 +186,122 @@ export default function Dashboard({ onLogout, userInfo }) {
     }
   };
 
-  const changePassword = async () => {
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      alert('Die neuen Passwörter stimmen nicht überein');
-      return;
-    }
-    if (passwordData.newPassword.length < 6) {
-      alert('Das neue Passwort muss mindestens 6 Zeichen lang sein');
-      return;
-    }
+  // --- E-Mail-Versand nach erfolgreichem Onboarding ---
+  const handleSendEmail = async (onboardingId) => {
+    const recipients = window.prompt('E-Mail-Adressen (komma-getrennt):');
+    if (!recipients) return;
+
     try {
-      setLoading(true);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      alert('Passwort erfolgreich geändert!');
-      setPasswordData({
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: '',
-        showCurrentPassword: false,
-        showNewPassword: false,
-        showConfirmPassword: false,
+      await fetchJSON(`/onboarding/${onboardingId}/send-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email_addresses: recipients.split(',').map(s => s.trim()).filter(Boolean),
+          subject: `Onboarding-Daten: ${onboardingCustomerData.firmenname || 'Kunde'}`,
+          message: 'Im Anhang finden Sie die IT-Infrastruktur-Daten.'
+        })
       });
+      alert('E-Mail erfolgreich versendet!');
     } catch (error) {
-      console.error('Fehler beim Ändern des Passworts:', error);
-      alert('Fehler beim Ändern des Passworts');
-    } finally {
-      setLoading(false);
+      alert('Fehler beim E-Mail-Versand: ' + error.message);
     }
   };
+
+  // --- Passwort ändern ---
+  // ERSETZEN Sie die bestehende changePassword Funktion mit dieser:
+
+const changePassword = async () => {
+  // Frontend-Validierung
+  if (!passwordData.currentPassword.trim()) {
+    alert('Bitte geben Sie Ihr aktuelles Passwort ein');
+    return;
+  }
+  
+  if (!passwordData.newPassword.trim()) {
+    alert('Bitte geben Sie ein neues Passwort ein');
+    return;
+  }
+  
+  if (passwordData.newPassword !== passwordData.confirmPassword) {
+    alert('Die neuen Passwörter stimmen nicht überein');
+    return;
+  }
+  
+  // Mindestens 8 Zeichen Validierung
+  if (passwordData.newPassword.length < 8) {
+    alert('Das neue Passwort muss mindestens 8 Zeichen lang sein');
+    return;
+  }
+  
+  // Erweiterte Passwort-Validierung (optional - gemäß Ihren Register-Anforderungen)
+  if (!/[A-Z]/.test(passwordData.newPassword)) {
+    alert('Das neue Passwort muss mindestens einen Großbuchstaben enthalten');
+    return;
+  }
+  
+  if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(passwordData.newPassword)) {
+    alert('Das neue Passwort muss mindestens ein Sonderzeichen enthalten');
+    return;
+  }
+
+  try {
+    setLoading(true);
+    
+    // API-Aufruf an das Backend
+    const response = await fetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        // Falls Sie JWT verwenden:
+        // 'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
+      },
+      credentials: 'include', // Für Session-basierte Auth
+      body: JSON.stringify({
+        currentPassword: passwordData.currentPassword,
+        newPassword: passwordData.newPassword
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      // Spezifische Backend-Fehlermeldungen anzeigen
+      if (response.status === 400) {
+        alert(data.error || 'Ungültige Eingaben');
+      } else if (response.status === 401) {
+        alert('Aktuelles Passwort ist falsch');
+      } else if (response.status === 403) {
+        alert('Nicht autorisiert - bitte erneut anmelden');
+      } else {
+        alert(data.error || 'Fehler beim Ändern des Passworts');
+      }
+      return;
+    }
+
+    // Erfolg
+    alert('Passwort erfolgreich geändert!');
+    
+    // Formular zurücksetzen
+    setPasswordData({
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: '',
+      showCurrentPassword: false,
+      showNewPassword: false,
+      showConfirmPassword: false,
+    });
+    
+  } catch (error) {
+    console.error('Fehler beim Ändern des Passworts:', error);
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      alert('Verbindungsfehler - bitte prüfen Sie Ihre Internetverbindung');
+    } else {
+      alert('Unerwarteter Fehler beim Ändern des Passworts');
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleFinalOnboardingSubmit = async () => {
     setLoading(true);
@@ -747,7 +836,7 @@ export default function Dashboard({ onLogout, userInfo }) {
               <RotateCcw className="w-5 h-5" />
             </button>
 
-            <div className="relative flex items-center">
+            <div className="relative flex items-center" ref={profileDropdownRef}>
               <button
                 onClick={() => setShowProfile(!showProfile)}
                 className="flex items-center space-x-2 p-2 text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800 rounded-md"
@@ -766,45 +855,47 @@ export default function Dashboard({ onLogout, userInfo }) {
               </button>
 
               {showProfile && (
-  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-900 rounded-md shadow-lg border border-gray-200 dark:border-gray-700 z-10">
-    <div className="p-3 border-b border-gray-100 dark:border-gray-800">
-      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-        {userInfo?.vorname} {userInfo?.name}
-      </p>
-      <p className="text-xs text-gray-500 dark:text-gray-400">{userInfo?.email}</p>
-    </div>
-    <div className="py-1">
-      <button
-        onClick={() => {
-          setShowProfile(false);
-          setShowProfileModal(true);
-        }}
-        className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
-      >
-        <Edit3 className="w-4 h-4 mr-2" />
-        Profil anzeigen
-      </button>
-      
-      {/* MFA-Link hier einfügen */}
-      <Link
-        to="/profile/mfa"
-        onClick={() => setShowProfile(false)}
-        className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
-      >
-        <Shield className="w-4 h-4 mr-2" />
-        MFA einrichten
-      </Link>
-      
-      <hr className="my-1 border-gray-100 dark:border-gray-800" />
-      <button
-        onClick={onLogout}
-        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
-      >
-        Abmelden
-      </button>
-    </div>
-  </div>
-)}
+                <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-gray-900 rounded-md shadow-lg border border-gray-200 dark:border-gray-700 z-10">
+                  <div className="p-3 border-b border-gray-100 dark:border-gray-800">
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {userInfo?.vorname} {userInfo?.name}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{userInfo?.email}</p>
+                  </div>
+                  <div className="py-1">
+                    <button
+                      onClick={() => {
+                        setShowProfile(false);
+                        setShowProfileModal(true);
+                      }}
+                      className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+                    >
+                      <Edit3 className="w-4 h-4 mr-2" />
+                      Profil anzeigen
+                    </button>
+                    
+                    <Link
+                      to="/profile/mfa"
+                      onClick={() => setShowProfile(false)}
+                      className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+                    >
+                      <Shield className="w-4 h-4 mr-2" />
+                      MFA einrichten
+                    </Link>
+                    
+                    <hr className="my-1 border-gray-100 dark:border-gray-800" />
+                    <button
+                      onClick={() => {
+                        setShowProfile(false);
+                        onLogout();
+                      }}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+                    >
+                      Abmelden
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </header>
