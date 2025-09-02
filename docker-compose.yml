@@ -33,15 +33,14 @@ services:
       PGUSER: postgres
       PGPASSWORD: pauly2026!
       PGDATABASE: postgres
-      CORS_ORIGINS: http://localhost:3000
+      CORS_ORIGINS: http://localhost:3001,http://localhost:3000
       PORT: 5000
-      # E-Mail Konfiguration hinzugefügt:
       SMTP_HOST: smtp.gmail.com
       SMTP_PORT: 587
       SMTP_USER: praktikum.ash228@gmail.com
       SMTP_PASS: jpacknzjwopnolla
       SMTP_FROM: praktikum.ash228@gmail.com
-      FRONTEND_URL: http://localhost:3000
+      FRONTEND_URL: http://localhost:3001
       MFA_ISSUER: "Pauly Dashboard"
     depends_on:
       db:

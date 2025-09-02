@@ -28,7 +28,7 @@ const validatePassword = (password) => {
     errors.push('Passwort muss mindestens einen Großbuchstaben enthalten');
   }
   
-  if (!/[!@#$%^&*()_+\-=\[]{};':"\\|,.<>\/?]/.test(password)) {
+  if (!/[!@#$%^&*()_+=\[\]{}|;:,.<>?/~`-]/.test(password)) {
     errors.push('Passwort muss mindestens ein Sonderzeichen enthalten');
   }
   
@@ -741,7 +741,7 @@ app.get('/api/kalkulationen/stats', async (_req, res) => {
          WHERE date_trunc('month', datum) = date_trunc('month', CURRENT_DATE)
       `),
       pool.query(`
-        SELECT COALESCE(SUM(gesamtpreis),0::float8 AS total_revenue
+        SELECT COALESCE(SUM(gesamtpreis),0)::float8 AS total_revenue
           FROM kalkulationen
          WHERE date_trunc('month', datum) = date_trunc('month', CURRENT_DATE)
            AND status = 'erledigt'
