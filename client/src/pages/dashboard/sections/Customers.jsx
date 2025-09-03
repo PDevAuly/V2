@@ -1,6 +1,6 @@
 import React from 'react';
 import { User, Network } from 'lucide-react';
-import { useDashboard } from '../dashboard/context';
+import { useDashboard } from '../context';
 
 export default function Customers() {
   const { customers, setActiveSection } = useDashboard();

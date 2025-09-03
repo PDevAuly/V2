@@ -1,4 +1,3 @@
-
 export const euro = (n) =>
   new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' })
     .format(Number(n || 0));

@@ -1,8 +1,15 @@
 import React from 'react';
 import { User, Clock, TrendingUp, ChevronRight } from 'lucide-react';
-import { euro, statusBadgeClass } from '../utils/format';
+import { euro, statusBadgeClass } from 'utils/format'; // <-- absolut dank baseUrl
 
-export default function Overview({ stats, kalkulationen, onGoCustomers }) {
+export default function Overview({ stats = {}, kalkulationen = [], onGoCustomers }) {
+  const safeStats = {
+    activeCustomers: stats.activeCustomers ?? 0,
+    monthlyHours: stats.monthlyHours ?? 0,
+    monthlyRevenue: stats.monthlyRevenue ?? 0,
+  };
+  const list = Array.isArray(kalkulationen) ? kalkulationen : [];
+
   return (
     <div className="space-y-6">
       <div>
@@ -12,19 +19,16 @@ export default function Overview({ stats, kalkulationen, onGoCustomers }) {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {[
-          {
-            icon: User, bg: 'bg-blue-500', label: 'Kunden', value: stats.activeCustomers,
-            clickable: true, onClick: onGoCustomers,
-          },
-          { icon: Clock, bg: 'bg-orange-500', label: 'Stunden (Monat)', value: Math.round(stats.monthlyHours) + 'h' },
-          { icon: TrendingUp, bg: 'bg-purple-500', label: 'Umsatz (Monat)', value: euro(stats.monthlyRevenue) },
+          { icon: User, bg: 'bg-blue-500',   label: 'Kunden',          value: safeStats.activeCustomers,             clickable: true, onClick: onGoCustomers },
+          { icon: Clock, bg: 'bg-orange-500', label: 'Stunden (Monat)', value: Math.round(safeStats.monthlyHours) + 'h' },
+          { icon: TrendingUp, bg: 'bg-purple-500', label: 'Umsatz (Monat)', value: euro(safeStats.monthlyRevenue) },
         ].map((item, index) => (
           <div
             key={index}
             onClick={item.onClick}
             className={`bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700
               transition-all duration-200 hover:shadow-md hover:scale-[1.02] hover:border-gray-300 dark:hover:border-gray-600
-              ${item.onClick ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-750 active:scale-[0.98]' : ''}`}
+              ${item.onClick ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 active:scale-[0.98]' : ''}`}
           >
             <div className="flex items-center">
               <div className={`w-8 h-8 ${item.bg} rounded-md flex items-center justify-center`}>
@@ -60,7 +64,7 @@ export default function Overview({ stats, kalkulationen, onGoCustomers }) {
               </tr>
             </thead>
             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-              {kalkulationen.slice(0, 5).map((k, idx) => (
+              {list.slice(0, 5).map((k, idx) => (
                 <tr key={k.kalkulations_id ?? `${k.kunde_id ?? 'k'}-${k.datum ?? 'd'}-${idx}`} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
@@ -85,7 +89,7 @@ export default function Overview({ stats, kalkulationen, onGoCustomers }) {
                   </td>
                 </tr>
               ))}
-              {kalkulationen.length === 0 && (
+              {list.length === 0 && (
                 <tr>
                   <td colSpan="5" className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
                     Keine Kalkulationen vorhanden.
