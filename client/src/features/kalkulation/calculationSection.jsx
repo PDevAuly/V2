@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronRight, ChevronDown } from 'lucide-react';
+import { fetchJSON } from 'services/api'; // Import hinzufügen
 
 export default function CalculationSection({
   customers,
@@ -174,8 +175,8 @@ export default function CalculationSection({
     return { count, hours, total };
   };
 
-  // Submit: nur Kunde als Pflichtfeld, Rest wird „sanitized“
-  const handleSubmit = (e) => {
+  // KORRIGIERTE handleSubmit Funktion
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!calculationForm.kunde_id) {
@@ -202,14 +203,34 @@ export default function CalculationSection({
 
     const payload = {
       kunde_id: calculationForm.kunde_id,
-      stundensatz: defaultRate,            // darf null sein
-      dienstleistungen: sanitized,         // auch „leere“ Zeilen erlaubt
-      mwst: Number(mwst) || 0,             // falls Backend ignoriert, egal
+      stundensatz: defaultRate,
+      dienstleistungen: sanitized,
+      mwst: Number(mwst) || 0,
     };
 
-    // Parent-Handler mit (event, payload) aufrufen
-    if (typeof onSubmit === 'function') {
-      onSubmit(e, payload);
+    try {
+      console.log('🚀 Speichere Kalkulation...', payload);
+      
+      // Direkter API Call anstelle über Parent
+      const response = await fetchJSON('/kalkulationen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      console.log('✅ Kalkulation gespeichert:', response);
+      
+      // Erfolgsbenachrichtigung
+      alert('✅ Kalkulation erfolgreich gespeichert!');
+      
+      // Parent-Handler aufrufen (ohne Parameter)
+      if (typeof onSubmit === 'function') {
+        await onSubmit(); // ← Jetzt ohne Parameter
+      }
+      
+    } catch (error) {
+      console.error('❌ Fehler beim Speichern der Kalkulation:', error);
+      alert(`❌ Fehler beim Speichern: ${error.message}`);
     }
   };
 
