@@ -12,9 +12,48 @@ import useDarkMode from '../../hooks/useDarkMode';
 import Overview from './sections/Overview';
 import Customers from './sections/Customers';
 
-// Features lazy laden
+// Features lazy laden mit Error Boundaries
 const OnboardingSection = lazy(() => import('../../features/onboarding/OnboardingSection'));
 const CalculationSection = lazy(() => import('../../features/kalkulation/CalculationSection'));
+
+// Error Boundary für Lazy-loaded Components
+class LazyErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Lazy loading error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-6 text-center">
+          <h2 className="text-xl font-semibold text-red-600 dark:text-red-400 mb-2">
+            Fehler beim Laden
+          </h2>
+          <p className="text-gray-600 dark:text-gray-400">
+            Diese Sektion konnte nicht geladen werden. Bitte versuchen Sie es später erneut.
+          </p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="mt-4 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded"
+          >
+            Seite neu laden
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 // Simple Context
 const DashboardContext = React.createContext();
@@ -119,40 +158,86 @@ export default function DashboardPage({ onLogout, userInfo }) {
             )}
 
             {active === 'onboarding' && (
-              <Suspense fallback={<div className="text-gray-600 dark:text-gray-300">Lade Onboarding…</div>}>
-                <OnboardingSection
-                  isDark={isDark}
-                  currentOnboardingStep={currentOnboardingStep}
-                  setCurrentOnboardingStep={setCurrentOnboardingStep}
-                  onboardingCustomerData={onboardingCustomerData}
-                  setOnboardingCustomerData={setOnboardingCustomerData}
-                  infrastructureData={infrastructureData}
-                  setInfrastructureData={setInfrastructureData}
-                  loading={loading}
-                  onFinalSubmit={async () => {
-                    await loadDashboardData();
-                    setActive('customers');
-                  }}
-                />
-              </Suspense>
+              <LazyErrorBoundary>
+                <Suspense fallback={
+                  <div className="flex items-center justify-center p-8">
+                    <div className="text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                      <p className="text-gray-600 dark:text-gray-300">Lade Onboarding…</p>
+                    </div>
+                  </div>
+                }>
+                  <OnboardingSection
+                    isDark={isDark}
+                    currentOnboardingStep={currentOnboardingStep}
+                    setCurrentOnboardingStep={setCurrentOnboardingStep}
+                    onboardingCustomerData={onboardingCustomerData}
+                    setOnboardingCustomerData={setOnboardingCustomerData}
+                    infrastructureData={infrastructureData}
+                    setInfrastructureData={setInfrastructureData}
+                    loading={loading}
+                    onFinalSubmit={async () => {
+                      try {
+                        await loadDashboardData();
+                        setActive('customers');
+                      } catch (error) {
+                        console.error('Fehler beim Aktualisieren nach Onboarding:', error);
+                        setActive('customers');
+                      }
+                    }}
+                  />
+                </Suspense>
+              </LazyErrorBoundary>
             )}
 
             {active === 'stundenkalkulation' && (
-              <Suspense fallback={<div className="text-gray-600 dark:text-gray-300">Lade Kalkulation…</div>}>
-                <CalculationSection
-                  isDark={isDark}
-                  customers={customers}
-                  calculationForm={calculationForm}
-                  setCalculationForm={setCalculationForm}
-                  mwst={mwst}
-                  setMwst={setMwst}
-                  loading={loading}
-                  onSubmit={async () => {
-                    await loadDashboardData();
-                    setActive('overview');
-                  }}
-                />
-              </Suspense>
+              <LazyErrorBoundary>
+                <Suspense fallback={
+                  <div className="flex items-center justify-center p-8">
+                    <div className="text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                      <p className="text-gray-600 dark:text-gray-300">Lade Kalkulation…</p>
+                    </div>
+                  </div>
+                }>
+                  <CalculationSection
+                    isDark={isDark}
+                    customers={customers}
+                    calculationForm={calculationForm}
+                    setCalculationForm={setCalculationForm}
+                    mwst={mwst}
+                    setMwst={setMwst}
+                    loading={loading}
+                    onSubmit={async () => {
+                      try {
+                        await loadDashboardData();
+                        setActive('overview');
+                      } catch (error) {
+                        console.error('Fehler beim Aktualisieren nach Kalkulation:', error);
+                        setActive('overview');
+                      }
+                    }}
+                  />
+                </Suspense>
+              </LazyErrorBoundary>
+            )}
+
+            {/* Fallback für unbekannte Sections */}
+            {!['overview', 'customers', 'onboarding', 'stundenkalkulation'].includes(active) && (
+              <div className="p-6 text-center">
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                  Sektion nicht gefunden
+                </h2>
+                <p className="text-gray-600 dark:text-gray-400 mb-4">
+                  Die angeforderte Sektion "{active}" existiert nicht.
+                </p>
+                <button
+                  onClick={() => setActive('overview')}
+                  className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded"
+                >
+                  Zurück zur Übersicht
+                </button>
+              </div>
             )}
           </main>
         </div>
