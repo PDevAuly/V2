@@ -1,22 +1,22 @@
-// src/pages/dashboard/Dashboard.jsx
+// client/src/pages/dashboard/Dashboard.jsx
 import React, { useEffect, useState, Suspense, lazy } from 'react';
 import { User, Calculator, TrendingUp, Network } from 'lucide-react';
 
-// ✅ Korrigierte Pfade basierend auf Ihrer Verzeichnisstruktur
-import Sidebar from '../../components/Sidebar';     // von dashboard -> components
-import Header from '../../components/Header';       // von dashboard -> components
-import useDashboardData from '../../hooks/useDashboardData'; // von dashboard -> hooks
-import useDarkMode from '../../hooks/useDarkMode';  // korrekt
+// ✅ Saubere Imports basierend auf neuer Struktur
+import Sidebar from '../../components/Sidebar';
+import Header from '../../components/Header';
+import useDashboardData from '../../hooks/useDashboardData';
+import useDarkMode from '../../hooks/useDarkMode';
 
-// Dashboard-spezifische Komponenten (falls sie existieren)
+// Dashboard Sections
 import Overview from './sections/Overview';
 import Customers from './sections/Customers';
 
-// Große Features lazy laden
+// Features lazy laden
 const OnboardingSection = lazy(() => import('../../features/onboarding/OnboardingSection'));
 const CalculationSection = lazy(() => import('../../features/kalkulation/CalculationSection'));
 
-// Context - falls Sie einen Dashboard Context haben, erstellen wir ihn
+// Simple Context
 const DashboardContext = React.createContext();
 const DashboardProvider = ({ children, value }) => (
   <DashboardContext.Provider value={value}>{children}</DashboardContext.Provider>
