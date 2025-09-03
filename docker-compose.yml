@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   db:
     image: postgres:15
@@ -27,16 +25,16 @@ services:
     container_name: pauly-backend
     restart: unless-stopped
     environment:
-      NODE_ENV: production
+      NODE_ENV: "production"
       PGHOST: db
-      PGPORT: 5432
+      PGPORT: "5432"
       PGUSER: postgres
       PGPASSWORD: pauly2026!
       PGDATABASE: postgres
-      CORS_ORIGINS: http://localhost:3001,http://localhost:3000
-      PORT: 5000
+      CORS_ORIGINS: "http://localhost:3001"
+      PORT: "5000"
       SMTP_HOST: smtp.gmail.com
-      SMTP_PORT: 587
+      SMTP_PORT: "587"
       SMTP_USER: praktikum.ash228@gmail.com
       SMTP_PASS: jpacknzjwopnolla
       SMTP_FROM: praktikum.ash228@gmail.com
@@ -52,6 +50,8 @@ services:
     build:
       context: ./client
       dockerfile: Dockerfile
+      args:
+        REACT_APP_API_URL: "/api"   
     container_name: pauly-frontend
     restart: unless-stopped
     depends_on:

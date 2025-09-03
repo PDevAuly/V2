@@ -1,4 +1,3 @@
-// src/features/onboarding/OnboardingSection.jsx
 import React, { useState } from 'react';
 import {
   Building,
@@ -13,6 +12,7 @@ import {
   Trash2,
   Plus,
 } from 'lucide-react';
+import { fetchJSON } from 'services/api';
 
 /* ------------------------- Helpers ------------------------- */
 const generateId = () =>

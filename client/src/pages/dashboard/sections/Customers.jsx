@@ -3,7 +3,7 @@ import { User, Network } from 'lucide-react';
 import { useDashboard } from '../context';
 
 export default function Customers() {
-  const { customers, setActiveSection } = useDashboard();
+  const { customers, setActive } = useDashboard();
 
   return (
     <div className="space-y-6">
@@ -17,7 +17,7 @@ export default function Customers() {
           </p>
         </div>
         <button
-          onClick={() => setActiveSection('onboarding')}
+          onClick={() => setActive('onboarding')}
           className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center space-x-2"
         >
           <Network className="w-4 h-4" />
@@ -29,13 +29,13 @@ export default function Customers() {
         <div className="text-center py-12">
           <User className="w-16 h-16 mx-auto text-gray-400 mb-4" />
           <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
-            Keine Kunden vorhanden
+            Keine Kunden vorhand
           </h3>
           <p className="text-gray-600 dark:text-gray-400 mb-6">
             Legen Sie Ihren ersten Kunden über das Onboarding an.
           </p>
           <button
-            onClick={() => setActiveSection('onboarding')}
+            onClick={() => setActive('onboarding')}
             className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
           >
             Ersten Kunden anlegen

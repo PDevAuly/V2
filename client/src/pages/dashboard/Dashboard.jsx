@@ -8,6 +8,7 @@ import Header from 'components/Header';
 import useDashboardData from 'hooks/useDashboardData';
 import useDarkMode from 'hooks/useDarkMode';
 import { DashboardProvider } from './context';
+import { fetchJSON } from 'services/api';
 
 // Sections
 import Overview from './sections/Overview';
@@ -57,6 +58,9 @@ export default function DashboardPage({ onLogout, userInfo }) {
     netzwerk: {}, hardware: {}, mail: {}, software: {}, backup: {}, sonstiges: { text: '' },
   });
 
+  // Zusätzlicher State für Onboarding Loading
+  const [onboardingLoading, setOnboardingLoading] = useState(false);
+
   // Kalkulation State
   const [mwst, setMwst] = useState(19);
   const [calculationForm, setCalculationForm] = useState({ kunde_id: '', stundensatz: 85, dienstleistungen: [] });
@@ -79,6 +83,83 @@ export default function DashboardPage({ onLogout, userInfo }) {
     stats,
     customers,
     kalkulationen,
+  };
+
+  // Korrigierte onFinalSubmit Funktion
+  const handleFinalSubmit = async () => {
+    setOnboardingLoading(true); // Separater Loading-State für Onboarding
+    
+    try {
+      console.log('🚀 Speichere Onboarding-Daten...');
+      console.log('Kundendaten:', onboardingCustomerData);
+      console.log('Infrastrukturdaten:', infrastructureData);
+      
+      // 1) Kunde speichern - MIT /api Prefix!
+      const customerResponse = await fetchJSON('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(onboardingCustomerData),
+      });
+
+      console.log('✅ Kunde gespeichert:', customerResponse);
+      
+      const kundeId = customerResponse?.kunde?.kunden_id;
+      if (!kundeId) {
+        throw new Error('Keine Kunden-ID erhalten. Server-Antwort: ' + JSON.stringify(customerResponse));
+      }
+
+      // 2) Onboarding speichern - MIT /api Prefix!
+      const onboardingResponse = await fetchJSON('/api/onboarding', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kunde_id: kundeId,
+          infrastructure_data: infrastructureData,
+        }),
+      });
+
+      console.log('✅ Onboarding gespeichert:', onboardingResponse);
+
+      // 3) Dashboard neu laden
+      await loadDashboardData();
+      console.log('✅ Dashboard-Daten aktualisiert');
+
+      // 4) Form-States zurücksetzen
+      setCurrentOnboardingStep(1);
+      setOnboardingCustomerData({
+        firmenname: '', strasse: '', hausnummer: '', ort: '', plz: '',
+        telefonnummer: '', email: '',
+        ansprechpartner: { name: '', vorname: '', email: '', telefonnummer: '', position: '' },
+      });
+      setInfrastructureData({
+        netzwerk: {}, hardware: {}, mail: {}, software: {}, backup: {}, sonstiges: { text: '' },
+      });
+
+      // 5) Zur Kundenliste wechseln
+      setActive('customers');
+      
+      // Erfolgs-Benachrichtigung
+      alert('✅ Kunde und IT-Infrastruktur erfolgreich gespeichert!');
+      return true;
+      
+    } catch (err) {
+      console.error('❌ Fehler beim Speichern:', err);
+      
+      // Detaillierteres Error-Handling
+      let errorMessage = 'Unbekannter Fehler';
+      if (err.message) {
+        errorMessage = err.message;
+      } else if (err.error) {
+        errorMessage = err.error;
+      }
+      
+      alert(`❌ Fehler beim Speichern:\n${errorMessage}\n\nBitte prüfen Sie die Browser-Konsole für Details.`);
+      
+      // Bei Fehler NICHT den Step zurücksetzen!
+      return false;
+    } finally {
+      setOnboardingLoading(false);
+    }
   };
 
   return (
@@ -129,11 +210,8 @@ export default function DashboardPage({ onLogout, userInfo }) {
                     setOnboardingCustomerData={setOnboardingCustomerData}
                     infrastructureData={infrastructureData}
                     setInfrastructureData={setInfrastructureData}
-                    loading={loading}
-                    onFinalSubmit={async () => {
-                      try { await loadDashboardData(); setActive('customers'); }
-                      catch (error) { console.error('Fehler beim Aktualisieren nach Onboarding:', error); setActive('customers'); }
-                    }}
+                    loading={onboardingLoading} // Verwende separaten Loading-State
+                    onFinalSubmit={handleFinalSubmit}
                   />
                 </Suspense>
               </LazyErrorBoundary>
