@@ -2,19 +2,25 @@
 import React, { useEffect, useState, Suspense, lazy } from 'react';
 import { User, Calculator, TrendingUp, Network } from 'lucide-react';
 
-// ✅ Korrigierte relative Pfade - ein Level hoch
-import Sidebar from '../components/Sidebar';
-import Header from '../components/Header';
-import { DashboardProvider } from './context';
-import useDashboardData from 'pages/dashboard/hooks/useDashboardData';
-import useDarkMode from 'hooks/useDarkMode';
+// ✅ Korrigierte Pfade basierend auf Ihrer Verzeichnisstruktur
+import Sidebar from '../../components/Sidebar';     // von dashboard -> components
+import Header from '../../components/Header';       // von dashboard -> components
+import useDashboardData from '../../hooks/useDashboardData'; // von dashboard -> hooks
+import useDarkMode from '../../hooks/useDarkMode';  // korrekt
 
+// Dashboard-spezifische Komponenten (falls sie existieren)
 import Overview from './sections/Overview';
 import Customers from './sections/Customers';
 
 // Große Features lazy laden
-const OnboardingSection = lazy(() => import('features/onboarding/OnboardingSection'));
-const CalculationSection = lazy(() => import('features/kalkulation/CalculationSection'));
+const OnboardingSection = lazy(() => import('../../features/onboarding/OnboardingSection'));
+const CalculationSection = lazy(() => import('../../features/kalkulation/CalculationSection'));
+
+// Context - falls Sie einen Dashboard Context haben, erstellen wir ihn
+const DashboardContext = React.createContext();
+const DashboardProvider = ({ children, value }) => (
+  <DashboardContext.Provider value={value}>{children}</DashboardContext.Provider>
+);
 
 export default function DashboardPage({ onLogout, userInfo }) {
   const [active, setActive] = useState('overview');
