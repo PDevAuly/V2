@@ -1,6 +1,8 @@
+// src/pages/register.jsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import './register.css';
+import { fetchJSON } from 'services/api'; // ✅ Wrapper nutzen
 
 const Register = () => {
   const navigate = useNavigate();
@@ -11,13 +13,13 @@ const Register = () => {
   const [passwortBestaetigen, setPasswortBestaetigen] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  
+
   // Passwort-Validierung States
   const [passwordValidation, setPasswordValidation] = useState({
     length: false,
     uppercase: false,
     special: false,
-    match: false
+    match: false,
   });
   const [showValidation, setShowValidation] = useState(false);
 
@@ -27,19 +29,17 @@ const Register = () => {
       length: passwort.length >= 8,
       uppercase: /[A-Z]/.test(passwort),
       special: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(passwort),
-      match: passwort === passwortBestaetigen && passwort.length > 0
+      match: passwort === passwortBestaetigen && passwort.length > 0,
     };
-    
     setPasswordValidation(validation);
     setShowValidation(passwort.length > 0);
   }, [passwort, passwortBestaetigen]);
 
-  const isPasswordValid = () => {
-    return passwordValidation.length && 
-           passwordValidation.uppercase && 
-           passwordValidation.special && 
-           passwordValidation.match;
-  };
+  const isPasswordValid = () =>
+    passwordValidation.length &&
+    passwordValidation.uppercase &&
+    passwordValidation.special &&
+    passwordValidation.match;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -50,32 +50,30 @@ const Register = () => {
       setMessage('Bitte erfülle alle Passwort-Anforderungen');
       return;
     }
-
     if (passwort !== passwortBestaetigen) {
       setMessage('Passwörter stimmen nicht überein');
       return;
     }
 
     setLoading(true);
-
     try {
-      const res = await fetch('/api/auth/register', {
+      // ✅ statt fetch('/api/...') jetzt fetchJSON verwenden
+      const data = await fetchJSON('/auth/register', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ vorname, nachname, email, passwort }),
       });
 
-      const data = await res.json();
-
-      if (res.ok) {
+      if (data) {
         setMessage('Registrierung erfolgreich!');
         setTimeout(() => navigate('/login'), 1500);
       } else {
-        setMessage(data.error || 'Fehler bei der Registrierung');
+        // falls der Server 204/leer antwortet
+        setMessage('Registrierung erfolgreich!');
+        setTimeout(() => navigate('/login'), 1500);
       }
     } catch (err) {
       console.error(err);
-      setMessage('Serverfehler. Bitte später versuchen.');
+      setMessage(err.message || 'Fehler bei der Registrierung');
     } finally {
       setLoading(false);
     }
@@ -95,49 +93,49 @@ const Register = () => {
             </header>
 
             <div className="field-set">
-              <input 
-                className="form-input" 
-                type="text" 
-                placeholder="Vorname" 
-                value={vorname} 
-                onChange={(e) => setVorname(e.target.value)} 
-                required 
-              />
-              
-              <input 
-                className="form-input" 
-                type="text" 
-                placeholder="Nachname" 
-                value={nachname} 
-                onChange={(e) => setNachname(e.target.value)} 
-                required 
-              />
-              
-              <input 
-                className="form-input" 
-                type="email" 
-                placeholder="E-Mail" 
-                value={email} 
-                onChange={(e) => setEmail(e.target.value)} 
-                required 
-              />
-              
-              <input 
-                className={`form-input ${showValidation && !passwordValidation.length ? 'invalid' : showValidation && passwordValidation.length ? 'valid' : ''}`}
-                type="password" 
-                placeholder="Passwort" 
-                value={passwort} 
-                onChange={(e) => setPasswort(e.target.value)} 
-                required 
+              <input
+                className="form-input"
+                type="text"
+                placeholder="Vorname"
+                value={vorname}
+                onChange={(e) => setVorname(e.target.value)}
+                required
               />
 
-              <input 
+              <input
+                className="form-input"
+                type="text"
+                placeholder="Nachname"
+                value={nachname}
+                onChange={(e) => setNachname(e.target.value)}
+                required
+              />
+
+              <input
+                className="form-input"
+                type="email"
+                placeholder="E-Mail"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+
+              <input
+                className={`form-input ${showValidation && !passwordValidation.length ? 'invalid' : showValidation && passwordValidation.length ? 'valid' : ''}`}
+                type="password"
+                placeholder="Passwort"
+                value={passwort}
+                onChange={(e) => setPasswort(e.target.value)}
+                required
+              />
+
+              <input
                 className={`form-input ${passwortBestaetigen.length > 0 && !passwordValidation.match ? 'invalid' : passwortBestaetigen.length > 0 && passwordValidation.match ? 'valid' : ''}`}
-                type="password" 
-                placeholder="Passwort bestätigen" 
-                value={passwortBestaetigen} 
-                onChange={(e) => setPasswortBestaetigen(e.target.value)} 
-                required 
+                type="password"
+                placeholder="Passwort bestätigen"
+                value={passwortBestaetigen}
+                onChange={(e) => setPasswortBestaetigen(e.target.value)}
+                required
               />
 
               {/* Passwort-Validierung Anzeige */}
@@ -161,13 +159,13 @@ const Register = () => {
                 </div>
               )}
 
-              <button 
-                type="submit" 
-                className="log-in" 
+              <button
+                type="submit"
+                className="log-in"
                 disabled={loading || !isPasswordValid()}
                 style={{
                   opacity: (!isPasswordValid() && showValidation) ? 0.6 : 1,
-                  cursor: (!isPasswordValid() && showValidation) ? 'not-allowed' : 'pointer'
+                  cursor: (!isPasswordValid() && showValidation) ? 'not-allowed' : 'pointer',
                 }}
               >
                 {loading ? 'Registriert...' : 'Registrieren'}
@@ -175,12 +173,14 @@ const Register = () => {
             </div>
 
             {message && (
-              <p style={{ 
-                color: message.includes('erfolgreich') ? '#4CAF50' : '#f44336', 
-                marginTop: '10px',
-                textAlign: 'center',
-                fontWeight: 'bold'
-              }}>
+              <p
+                style={{
+                  color: message.includes('erfolgreich') ? '#4CAF50' : '#f44336',
+                  marginTop: '10px',
+                  textAlign: 'center',
+                  fontWeight: 'bold',
+                }}
+              >
                 {message}
               </p>
             )}

@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import './login.css';
+import { fetchJSON } from 'services/api'; // ✅ Wrapper nutzen
 
 const Login = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('');
@@ -15,31 +16,21 @@ const Login = ({ onLoginSuccess }) => {
   const [pendingUserEmail, setPendingUserEmail] = useState(null);
   const [mfaToken, setMfaToken] = useState('');
 
-  const parseJsonSafely = async (res) => {
-    try {
-      return await res.json();
-    } catch {
-      return {};
-    }
-  };
-
   // Einfache Session-Token generieren (da Backend keine JWT implementiert hat)
-  const generateSessionToken = () => {
-    return 'session_' + Math.random().toString(36).substring(2) + '_' + Date.now();
-  };
+  const generateSessionToken = () =>
+    'session_' + Math.random().toString(36).substring(2) + '_' + Date.now();
 
   // Konsistente User-Speicherung für MFA-Setup Kompatibilität
   const saveUserData = (userData) => {
     const sessionToken = generateSessionToken();
-    
+
     // Token speichern (für MFA-Setup benötigt)
     localStorage.setItem('accessToken', sessionToken);
-    
+
     // User-Daten in allen erwarteten Speicherorten
     localStorage.setItem('currentUser', JSON.stringify(userData)); // MFA-Setup erwartet das
     localStorage.setItem('user', JSON.stringify(userData));        // Backup
     localStorage.setItem('userData', JSON.stringify(userData));    // Legacy
-    
     console.log('User-Daten gespeichert:', userData);
   };
 
@@ -49,27 +40,19 @@ const Login = ({ onLoginSuccess }) => {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/auth/login', {
+      // ✅ statt fetch('/api/...') jetzt fetchJSON verwenden
+      const data = await fetchJSON('/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ email, passwort }),
       });
 
-      const data = await parseJsonSafely(res);
-
-      if (!res.ok) {
-        setError(data.error || `Login fehlgeschlagen (${res.status})`);
-        return;
-      }
-
       // MFA verlangt?
-      if (data.status === 'MFA_REQUIRED') {
+      if (data?.status === 'MFA_REQUIRED') {
         setMfaRequired(true);
         setPendingUserId(data.user_id);
         setPendingUserEmail(data.email);
         setMfaToken('');
-        
+
         // Temporären Token für MFA-Verify setzen
         const tempToken = generateSessionToken();
         localStorage.setItem('accessToken', tempToken);
@@ -77,7 +60,7 @@ const Login = ({ onLoginSuccess }) => {
       }
 
       // Erfolgreich ohne MFA
-      if (data.user) {
+      if (data?.user) {
         saveUserData(data.user);
         onLoginSuccess?.(data.user);
       } else {
@@ -85,7 +68,7 @@ const Login = ({ onLoginSuccess }) => {
       }
     } catch (err) {
       console.error('Login Fehler:', err);
-      setError('Serverfehler – bitte später erneut versuchen');
+      setError(err.message || 'Serverfehler – bitte später erneut versuchen');
     } finally {
       setLoading(false);
     }
@@ -98,30 +81,22 @@ const Login = ({ onLoginSuccess }) => {
 
     try {
       // Token aus localStorage holen (wurde im ersten Login-Step gesetzt)
-      const accessToken = localStorage.getItem('accessToken');
-      
-      const res = await fetch('/api/auth/mfa/verify', {
+      const accessToken = localStorage.getItem('accessToken') || '';
+
+      // ✅ auch hier fetchJSON nutzen; Header werden gemerged
+      const data = await fetchJSON('/auth/mfa/verify', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': accessToken ? `Bearer ${accessToken}` : undefined,
+          Authorization: accessToken ? `Bearer ${accessToken}` : undefined,
         },
-        credentials: 'include',
         body: JSON.stringify({
           user_id: pendingUserId,
           token: mfaToken,
         }),
       });
 
-      const data = await parseJsonSafely(res);
-
-      if (!res.ok) {
-        setError(data.error || 'MFA-Code ungültig');
-        return;
-      }
-
       // Erfolgreich mit MFA
-      if (data.user) {
+      if (data?.user) {
         saveUserData(data.user);
         onLoginSuccess?.(data.user);
       } else {
@@ -129,7 +104,7 @@ const Login = ({ onLoginSuccess }) => {
       }
     } catch (err) {
       console.error('MFA Verify Fehler:', err);
-      setError('Serverfehler – bitte später erneut versuchen');
+      setError(err.message || 'Serverfehler – bitte später erneut versuchen');
     } finally {
       setLoading(false);
     }
@@ -222,7 +197,7 @@ const Login = ({ onLoginSuccess }) => {
                   style={{
                     textAlign: 'center',
                     fontSize: '18px',
-                    letterSpacing: '3px'
+                    letterSpacing: '3px',
                   }}
                 />
 
@@ -241,7 +216,7 @@ const Login = ({ onLoginSuccess }) => {
                 </button>
 
                 {error && <p style={{ color: 'red', marginTop: 10 }}>{error}</p>}
-                
+
                 <div style={{ marginTop: 15, fontSize: '12px', color: '#999', textAlign: 'center' }}>
                   Haben Sie keinen Zugriff auf Ihr Handy?<br />
                   Verwenden Sie einen Ihrer Backup-Codes.
