@@ -1,12 +1,12 @@
-import { useState, useCallback } from 'react';
-import { fetchJSON } from '../services/api';
+﻿import { useState, useCallback } from 'react';
+import { fetchJSON } from '../features/services/api';
 
 export default function useDashboardData() {
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState({ activeCustomers: 0, monthlyHours: 0, monthlyRevenue: 0 });
   const [customers, setCustomers] = useState([]);
   const [kalkulationen, setKalkulationen] = useState([]);
-
+  
   const loadDashboardData = useCallback(async () => {
     setLoading(true);
     try {
@@ -15,7 +15,6 @@ export default function useDashboardData() {
         fetchJSON('/customers'),
         fetchJSON('/kalkulationen'),
       ]);
-
       if (statsP.status === 'fulfilled') {
         const s = statsP.value || {};
         setStats({
@@ -26,13 +25,12 @@ export default function useDashboardData() {
       } else {
         setStats({ activeCustomers: 0, monthlyHours: 0, monthlyRevenue: 0 });
       }
-
       setCustomers(customersP.status === 'fulfilled' && Array.isArray(customersP.value) ? customersP.value : []);
       setKalkulationen(kalkP.status === 'fulfilled' && Array.isArray(kalkP.value) ? kalkP.value : []);
     } finally {
       setLoading(false);
     }
   }, []);
-
+  
   return { loading, stats, customers, kalkulationen, loadDashboardData, setLoading, setCustomers, setKalkulationen };
 }
