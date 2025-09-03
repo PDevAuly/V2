@@ -10,7 +10,7 @@ import ResetPassword from './pages/auth/ResetPassword';
 
 // ✅ Dashboard & MFA
 import Dashboard from './pages/dashboard/Dashboard';
-import MFASetup from './pages/components/MFASetup';
+import MFASetup from './components/MFASetup';
 
 // ✅ Auth-CSS
 import './pages/auth/login.css';

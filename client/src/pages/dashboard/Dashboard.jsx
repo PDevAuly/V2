@@ -95,7 +95,7 @@ export default function DashboardPage({ onLogout, userInfo }) {
       console.log('Infrastrukturdaten:', infrastructureData);
       
       // 1) Kunde speichern - MIT /api Prefix!
-      const customerResponse = await fetchJSON('/api/customers', {
+      const customerResponse = await fetchJSON('/customers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(onboardingCustomerData),
@@ -109,7 +109,7 @@ export default function DashboardPage({ onLogout, userInfo }) {
       }
 
       // 2) Onboarding speichern - MIT /api Prefix!
-      const onboardingResponse = await fetchJSON('/api/onboarding', {
+      const onboardingResponse = await fetchJSON('/onboarding', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
