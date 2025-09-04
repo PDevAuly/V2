@@ -643,6 +643,65 @@ app.post('/api/customers', async (req, res) => {
   }
 });
 
+// ========= Einzelner Kunde =========
+app.get('/api/customers/:id', async (req, res) => {
+  try {
+    const kundenId = Number(req.params.id);
+    if (isNaN(kundenId)) {
+      return res.status(400).json({ error: 'Ungültige Kunden-ID' });
+    }
+
+    const result = await pool.query(
+      `
+      SELECT 
+        c.*,
+        COUNT(DISTINCT cc.kontakt_id)   AS ansprechpartner_count,
+        COUNT(DISTINCT o.onboarding_id) AS onboarding_count
+      FROM customers c
+      LEFT JOIN customer_contacts cc ON cc.kunden_id = c.kunden_id
+      LEFT JOIN onboarding o         ON o.kunde_id   = c.kunden_id
+      WHERE c.kunden_id = $1
+      GROUP BY c.kunden_id
+      `,
+      [kundenId]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'Kunde nicht gefunden' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (e) {
+    console.error('GET /api/customers/:id error:', e);
+    res.status(500).json({ error: 'Fehler beim Abrufen des Kunden' });
+  }
+});
+
+// ========= Onboarding-Daten eines Kunden =========
+app.get('/api/onboarding/customer/:kunde_id', async (req, res) => {
+  try {
+    const kundeId = Number(req.params.kunde_id);
+    if (isNaN(kundeId)) {
+      return res.status(400).json({ error: 'Ungültige Kunden-ID' });
+    }
+
+    const result = await pool.query(
+      `SELECT * FROM onboarding WHERE kunde_id = $1 ORDER BY created_at DESC`,
+      [kundeId]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'Keine Onboarding-Daten für diesen Kunden gefunden' });
+    }
+
+    res.json(result.rows);
+  } catch (e) {
+    console.error('GET /api/onboarding/customer/:kunde_id error:', e);
+    res.status(500).json({ error: 'Fehler beim Abrufen der Onboarding-Daten' });
+  }
+});
+
+
 // ========= Kalkulationen =========
 app.get('/api/kalkulationen', async (_req, res) => {
   try {
@@ -732,27 +791,31 @@ app.post('/api/kalkulationen', async (req, res) => {
 
 app.get('/api/kalkulationen/stats', async (_req, res) => {
   try {
-    const [kundenCount, aktiveOnb, monatsStunden, monatsUmsatz] = await Promise.all([
+    const [kundenCount, aktiveOnb, totalStunden, runningProjects] = await Promise.all([
+      // Anzahl Kunden
       pool.query('SELECT COUNT(*) FROM customers'),
+      
+      // Anzahl laufende Onboardings (als Projekte zählen)
       pool.query('SELECT COUNT(*) FROM onboarding'),
+      
+      // Gesamtstunden aus allen Kalkulationen
       pool.query(`
         SELECT COALESCE(SUM(gesamtzeit),0)::float8 AS total_hours
           FROM kalkulationen
-         WHERE date_trunc('month', datum) = date_trunc('month', CURRENT_DATE)
       `),
+      
+      // Laufende Projekte (Kalkulationen mit Status 'neu' oder 'in_bearbeitung')
       pool.query(`
-        SELECT COALESCE(SUM(gesamtpreis),0)::float8 AS total_revenue
+        SELECT COUNT(*)::int AS running_projects
           FROM kalkulationen
-         WHERE date_trunc('month', datum) = date_trunc('month', CURRENT_DATE)
-           AND status = 'erledigt'
+         WHERE status IN ('neu', 'in_bearbeitung', 'laufend')
       `),
     ]);
 
     res.json({
       activeCustomers: Number(kundenCount.rows[0].count || 0),
-      runningProjects: Number(aktiveOnb.rows[0].count || 0),
-      monthlyHours: Number(monatsStunden.rows[0].total_hours || 0),
-      monthlyRevenue: Number(monatsUmsatz.rows[0].total_revenue || 0),
+      runningProjects: Number(runningProjects.rows[0].running_projects || aktiveOnb.rows[0].count || 0), // Fallback auf Onboardings
+      totalHours: Number(totalStunden.rows[0].total_hours || 0),
     });
   } catch (e) {
     console.error('GET /api/kalkulationen/stats error:', e);
@@ -1044,6 +1107,95 @@ app.get('/api/onboarding/:id/export', async (req, res) => {
   } catch (e) {
     console.error('Export Fehler:', e);
     res.status(500).json({ error: `Fehler beim Export: ${e.message}` });
+  }
+});
+
+// ========= Projekte (Onboarding mit erweiterten Infos) =========
+app.get('/api/onboarding/projects', async (_req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        o.onboarding_id,
+        o.kunde_id,
+        o.status,
+        o.created_at,
+        o.updated_at,
+        c.firmenname,
+        
+        -- Netzwerk-Info
+        CASE WHEN n.onboarding_id IS NOT NULL THEN true ELSE false END as has_network,
+        
+        -- Hardware-Count
+        COUNT(DISTINCT h.hardware_id) as hardware_count,
+        
+        -- Software-Count  
+        COUNT(DISTINCT s.software_id) as software_count,
+        
+        -- Mail-Info
+        CASE WHEN m.onboarding_id IS NOT NULL THEN true ELSE false END as has_mail,
+        
+        -- Backup-Info
+        CASE WHEN b.onboarding_id IS NOT NULL THEN true ELSE false END as has_backup
+        
+      FROM onboarding o
+      LEFT JOIN customers c ON o.kunde_id = c.kunden_id
+      LEFT JOIN onboarding_network n ON o.onboarding_id = n.onboarding_id
+      LEFT JOIN onboarding_hardware h ON o.onboarding_id = h.onboarding_id
+      LEFT JOIN onboarding_software s ON o.onboarding_id = s.onboarding_id
+      LEFT JOIN onboarding_mail m ON o.onboarding_id = m.onboarding_id
+      LEFT JOIN onboarding_backup b ON o.onboarding_id = b.onboarding_id
+      
+      GROUP BY 
+        o.onboarding_id, o.kunde_id, o.status, o.created_at, o.updated_at,
+        c.firmenname, n.onboarding_id, m.onboarding_id, b.onboarding_id
+      ORDER BY o.created_at DESC
+    `);
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error('GET /api/onboarding/projects error:', error);
+    res.status(500).json({ error: 'Fehler beim Abrufen der Projekte' });
+  }
+});
+
+// ========= Projekt-Status aktualisieren =========
+app.patch('/api/onboarding/:id/status', async (req, res) => {
+  try {
+    const onboardingId = Number(req.params.id);
+    const { status } = req.body;
+    
+    if (!onboardingId) {
+      return res.status(400).json({ error: 'Ungültige Onboarding-ID' });
+    }
+    
+    if (!status || !['offen', 'erledigt'].includes(status)) {
+      return res.status(400).json({ error: 'Status muss "offen" oder "erledigt" sein' });
+    }
+    
+    // Prüfen ob Onboarding existiert
+    const exists = await pool.query(
+      'SELECT onboarding_id FROM onboarding WHERE onboarding_id = $1',
+      [onboardingId]
+    );
+    
+    if (!exists.rows.length) {
+      return res.status(404).json({ error: 'Onboarding nicht gefunden' });
+    }
+    
+    // Status aktualisieren
+    const result = await pool.query(
+      'UPDATE onboarding SET status = $1, updated_at = NOW() WHERE onboarding_id = $2 RETURNING *',
+      [status, onboardingId]
+    );
+    
+    res.json({
+      message: `Status erfolgreich auf "${status}" aktualisiert`,
+      onboarding: result.rows[0]
+    });
+    
+  } catch (error) {
+    console.error('PATCH /api/onboarding/:id/status error:', error);
+    res.status(500).json({ error: 'Fehler beim Aktualisieren des Status' });
   }
 });
 

@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import './login.css';
-import { fetchJSON } from 'services/api'; // ✅ Wrapper nutzen
+import { fetchJSON } from 'services/api'; // ✅ neu: API-Wrapper
 
 const Login = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('');
@@ -17,16 +17,15 @@ const Login = ({ onLoginSuccess }) => {
   const [mfaToken, setMfaToken] = useState('');
 
   // Einfache Session-Token generieren (da Backend keine JWT implementiert hat)
-  const generateSessionToken = () =>
-    'session_' + Math.random().toString(36).substring(2) + '_' + Date.now();
+  const generateSessionToken = () => {
+    return 'session_' + Math.random().toString(36).substring(2) + '_' + Date.now();
+  };
 
   // Konsistente User-Speicherung für MFA-Setup Kompatibilität
   const saveUserData = (userData) => {
     const sessionToken = generateSessionToken();
-
     // Token speichern (für MFA-Setup benötigt)
     localStorage.setItem('accessToken', sessionToken);
-
     // User-Daten in allen erwarteten Speicherorten
     localStorage.setItem('currentUser', JSON.stringify(userData)); // MFA-Setup erwartet das
     localStorage.setItem('user', JSON.stringify(userData));        // Backup
@@ -40,7 +39,7 @@ const Login = ({ onLoginSuccess }) => {
     setLoading(true);
 
     try {
-      // ✅ statt fetch('/api/...') jetzt fetchJSON verwenden
+      // ✅ statt fetch('/api/...') jetzt fetchJSON mit API_BASE (REACT_APP_API_URL oder '/api')
       const data = await fetchJSON('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, passwort }),
@@ -83,11 +82,12 @@ const Login = ({ onLoginSuccess }) => {
       // Token aus localStorage holen (wurde im ersten Login-Step gesetzt)
       const accessToken = localStorage.getItem('accessToken') || '';
 
-      // ✅ auch hier fetchJSON nutzen; Header werden gemerged
+      // ✅ auch hier fetchJSON verwenden; Header werden ergänzt
       const data = await fetchJSON('/auth/mfa/verify', {
         method: 'POST',
         headers: {
-          Authorization: accessToken ? `Bearer ${accessToken}` : undefined,
+          'Authorization': accessToken ? `Bearer ${accessToken}` : undefined,
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           user_id: pendingUserId,
@@ -197,7 +197,7 @@ const Login = ({ onLoginSuccess }) => {
                   style={{
                     textAlign: 'center',
                     fontSize: '18px',
-                    letterSpacing: '3px',
+                    letterSpacing: '3px'
                   }}
                 />
 

@@ -1,13 +1,16 @@
 import React from 'react';
-import { User, Clock, TrendingUp, ChevronRight } from 'lucide-react';
-import { euro, statusBadgeClass } from 'utils/format'; // <-- absolut dank baseUrl
+import { User, Clock, TrendingUp, ChevronRight, Briefcase } from 'lucide-react';
+import { euro, statusBadgeClass } from 'utils/format';
 
 export default function Overview({ stats = {}, kalkulationen = [], onGoCustomers }) {
   const safeStats = {
     activeCustomers: stats.activeCustomers ?? 0,
-    monthlyHours: stats.monthlyHours ?? 0,
-    monthlyRevenue: stats.monthlyRevenue ?? 0,
+    runningProjects: stats.runningProjects ?? 0, // Neue Statistik
+    totalHours: stats.totalHours ?? 0, // Gesamtstunden statt nur monatlich
   };
+
+  console.log('🔍 Debug Overview - stats:', stats);           // NEU
+console.log('🔍 Debug Overview - safeStats:', safeStats);  // NEU
   const list = Array.isArray(kalkulationen) ? kalkulationen : [];
 
   return (
@@ -19,9 +22,26 @@ export default function Overview({ stats = {}, kalkulationen = [], onGoCustomers
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {[
-          { icon: User, bg: 'bg-blue-500',   label: 'Kunden',          value: safeStats.activeCustomers,             clickable: true, onClick: onGoCustomers },
-          { icon: Clock, bg: 'bg-orange-500', label: 'Stunden (Monat)', value: Math.round(safeStats.monthlyHours) + 'h' },
-          { icon: TrendingUp, bg: 'bg-purple-500', label: 'Umsatz (Monat)', value: euro(safeStats.monthlyRevenue) },
+          { 
+            icon: User, 
+            bg: 'bg-blue-500', 
+            label: 'Kunden', 
+            value: safeStats.activeCustomers, 
+            clickable: true, 
+            onClick: onGoCustomers 
+          },
+          { 
+            icon: Briefcase, 
+            bg: 'bg-purple-500', 
+            label: 'Projekte', 
+            value: safeStats.runningProjects 
+          },
+          { 
+            icon: Clock, 
+            bg: 'bg-orange-500', 
+            label: 'Stunden', 
+            value: Math.round(safeStats.totalHours) + 'h' 
+          },
         ].map((item, index) => (
           <div
             key={index}

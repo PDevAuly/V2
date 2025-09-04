@@ -1,10 +1,24 @@
-import React from 'react';
-import { User, Network } from 'lucide-react';
+import React, { useState } from 'react';
+import { User, Network, Eye } from 'lucide-react';
 import { useDashboard } from '../context';
+import CustomerDetails from './CustomerDetails'; // Die neue Komponente
 
-export default function Customers() {
+export default function Customers({ isDark }) {
   const { customers, setActive } = useDashboard();
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
 
+  // Wenn ein Kunde ausgewählt ist, zeige Details
+  if (selectedCustomer) {
+    return (
+      <CustomerDetails
+        customerId={selectedCustomer}
+        onBack={() => setSelectedCustomer(null)}
+        isDark={isDark}
+      />
+    );
+  }
+
+  // Standard-Kundenliste
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -47,7 +61,7 @@ export default function Customers() {
             <table className="w-full">
               <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
                 <tr>
-                  {['Firmenname', 'E-Mail', 'Ort', 'Telefon', 'Ansprechpartner', 'Onboardings', 'Erstellt'].map((header) => (
+                  {['Firmenname', 'E-Mail', 'Ort', 'Telefon', 'Ansprechpartner', 'Onboardings', 'Erstellt', 'Aktionen'].map((header) => (
                     <th
                       key={header}
                       className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
@@ -70,9 +84,14 @@ export default function Customers() {
                             {customer.firmenname?.charAt(0)?.toUpperCase() || 'K'}
                           </span>
                         </div>
-                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                          {customer.firmenname || 'Unbekannt'}
-                        </span>
+                        <button
+                          onClick={() => setSelectedCustomer(customer.kunden_id)}
+                          className="text-left hover:text-blue-600 dark:hover:text-blue-400"
+                        >
+                          <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                            {customer.firmenname || 'Unbekannt'}
+                          </span>
+                        </button>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -112,6 +131,16 @@ export default function Customers() {
                       <span className="text-sm text-gray-900 dark:text-gray-300">
                         {customer.created_at ? new Date(customer.created_at).toLocaleDateString('de-DE') : '—'}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <button
+                        onClick={() => setSelectedCustomer(customer.kunden_id)}
+                        className="inline-flex items-center px-3 py-1 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900 dark:hover:bg-blue-800 text-blue-800 dark:text-blue-200 text-xs font-medium rounded-full transition-colors"
+                        title="Kundendetails anzeigen"
+                      >
+                        <Eye className="w-3 h-3 mr-1" />
+                        Details
+                      </button>
                     </td>
                   </tr>
                 ))}
