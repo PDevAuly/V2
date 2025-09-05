@@ -804,12 +804,12 @@ app.get('/api/kalkulationen/stats', async (_req, res) => {
           FROM kalkulationen
       `),
       
-      // Laufende Projekte (Kalkulationen mit Status 'neu' oder 'in_bearbeitung')
-      pool.query(`
-        SELECT COUNT(*)::int AS running_projects
-          FROM kalkulationen
-         WHERE status IN ('neu', 'in_bearbeitung', 'laufend')
-      `),
+      // Laufende Projekte (Kalkulationen mit Status 'neu' oder 'in Arbeit')
+pool.query(`
+  SELECT COUNT(*)::int AS running_projects
+    FROM kalkulationen
+   WHERE status IN ('neu', 'in Arbeit')
+`)
     ]);
 
     res.json({
@@ -1060,38 +1060,69 @@ app.post('/api/onboarding', async (req, res) => {
   }
 });
 
-app.post('/api/onboarding/:id/send-email', async (req, res) => {
+// ========= Onboarding-Details laden =========
+app.patch('/api/onboarding/:id', async (req, res) => {
   try {
-    const onboardingId = Number(req.params.id);
-    const { email_addresses, subject, message } = req.body;
-    if (!email_addresses || !Array.isArray(email_addresses)) {
-      return res.status(400).json({ error: 'E-Mail-Adressen sind erforderlich' });
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: 'Ungültige Onboarding-ID' });
+
+    let { status, datum, mitarbeiter_id, infrastructure_data } = req.body;
+
+    // Legacy-Mapping
+    if (status === 'offen') status = 'neu';
+
+    const ALLOWED = ['neu', 'in Arbeit', 'erledigt'];
+    if (status && !ALLOWED.includes(status)) {
+      return res.status(400).json({ error: `Status muss einer von ${ALLOWED.join(', ')} sein` });
+    }
+    if (datum && !/^\d{4}-\d{2}-\d{2}$/.test(datum)) {
+      return res.status(400).json({ error: 'Datum muss YYYY-MM-DD sein' });
     }
 
-    const data = await getFullOnboardingData(onboardingId);
-    const jsonContent = JSON.stringify(data, null, 2);
-    const fileName = `onboarding_${data.kunde.firmenname.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date()
-      .toISOString()
-      .split('T')[0]}.json`;
+    // Mitarbeiter-ID normalisieren
+    if (mitarbeiter_id !== undefined) {
+      if (mitarbeiter_id === '' || mitarbeiter_id === null) mitarbeiter_id = null;
+      else {
+        const n = Number(mitarbeiter_id);
+        if (Number.isNaN(n)) return res.status(400).json({ error: 'mitarbeiter_id ungültig' });
+        mitarbeiter_id = n;
+      }
+    } else {
+      mitarbeiter_id = undefined; // nicht ändern
+    }
 
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM || emailConfig.auth.user,
-      to: email_addresses.join(', '),
-      subject: subject || `Onboarding-Daten: ${data.kunde.firmenname}`,
-      html: `
-        <h2>Onboarding-Daten für ${data.kunde.firmenname}</h2>
-        ${message ? `<p>${message}</p>` : ''}
-        <p>Im Anhang finden Sie die vollständigen Daten als JSON-Datei.</p>
-      `,
-      attachments: [{ filename: fileName, content: jsonContent, contentType: 'application/json' }],
-    });
+    // infrastructure_data optional
+    if (infrastructure_data !== undefined && typeof infrastructure_data !== 'object') {
+      try { infrastructure_data = JSON.parse(infrastructure_data); } catch {
+        return res.status(400).json({ error: 'infrastructure_data muss JSON sein' });
+      }
+    }
 
-    res.json({ message: 'E-Mail erfolgreich versendet', recipients: email_addresses, filename: fileName });
+    const q = await pool.query(`
+      UPDATE onboarding
+         SET status             = COALESCE($1, status),
+             datum              = COALESCE($2::date, datum),
+             mitarbeiter_id     = CASE WHEN $3 IS NULL THEN NULL ELSE COALESCE($3, mitarbeiter_id) END,
+             infrastructure_data= COALESCE($4::jsonb, infrastructure_data),
+             updated_at         = NOW()
+       WHERE onboarding_id=$5
+       RETURNING onboarding_id, kunde_id, status, datum, mitarbeiter_id, infrastructure_data, created_at, updated_at
+    `, [
+      status ?? null,
+      datum ?? null,
+      (mitarbeiter_id === undefined ? null : mitarbeiter_id), // NULL = explizit auf NULL, undefined = nicht ändern
+      (infrastructure_data === undefined ? null : JSON.stringify(infrastructure_data)),
+      id
+    ]);
+
+    if (!q.rows.length) return res.status(404).json({ error: 'Onboarding nicht gefunden' });
+    res.json(q.rows[0]);
   } catch (e) {
-    console.error('E-Mail Versand Fehler:', e);
-    res.status(500).json({ error: `Fehler beim E-Mail-Versand: ${e.message}` });
+    console.error('PATCH /api/onboarding/:id error:', e);
+    res.status(500).json({ error: 'Fehler beim Aktualisieren des Onboardings' });
   }
 });
+
 
 app.get('/api/onboarding/:id/export', async (req, res) => {
   try {
@@ -1162,37 +1193,26 @@ app.get('/api/onboarding/projects', async (_req, res) => {
 app.patch('/api/onboarding/:id/status', async (req, res) => {
   try {
     const onboardingId = Number(req.params.id);
-    const { status } = req.body;
-    
-    if (!onboardingId) {
-      return res.status(400).json({ error: 'Ungültige Onboarding-ID' });
+    let { status } = req.body;
+
+    if (!onboardingId) return res.status(400).json({ error: 'Ungültige Onboarding-ID' });
+
+    // Legacy-Mapping: "offen" => "neu"
+    if (status === 'offen') status = 'neu';
+
+    const ALLOWED = ['neu', 'in Arbeit', 'erledigt'];
+    if (!status || !ALLOWED.includes(status)) {
+      return res.status(400).json({ error: `Status muss einer von ${ALLOWED.join(', ')} sein` });
     }
-    
-    if (!status || !['offen', 'erledigt'].includes(status)) {
-      return res.status(400).json({ error: 'Status muss "offen" oder "erledigt" sein' });
-    }
-    
-    // Prüfen ob Onboarding existiert
-    const exists = await pool.query(
-      'SELECT onboarding_id FROM onboarding WHERE onboarding_id = $1',
-      [onboardingId]
-    );
-    
-    if (!exists.rows.length) {
-      return res.status(404).json({ error: 'Onboarding nicht gefunden' });
-    }
-    
-    // Status aktualisieren
+
+    const exists = await pool.query('SELECT 1 FROM onboarding WHERE onboarding_id=$1', [onboardingId]);
+    if (!exists.rows.length) return res.status(404).json({ error: 'Onboarding nicht gefunden' });
+
     const result = await pool.query(
-      'UPDATE onboarding SET status = $1, updated_at = NOW() WHERE onboarding_id = $2 RETURNING *',
+      'UPDATE onboarding SET status=$1, updated_at=NOW() WHERE onboarding_id=$2 RETURNING *',
       [status, onboardingId]
     );
-    
-    res.json({
-      message: `Status erfolgreich auf "${status}" aktualisiert`,
-      onboarding: result.rows[0]
-    });
-    
+    res.json({ message: `Status auf "${status}" aktualisiert`, onboarding: result.rows[0] });
   } catch (error) {
     console.error('PATCH /api/onboarding/:id/status error:', error);
     res.status(500).json({ error: 'Fehler beim Aktualisieren des Status' });

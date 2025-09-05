@@ -1,10 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Briefcase, Eye, Edit, CheckCircle, Clock, Building, Network, User } from 'lucide-react';
+import { Briefcase, Eye, Edit, CheckCircle, Clock, Building, Network } from 'lucide-react';
 import { fetchJSON } from 'services/api';
 
 const statusConfig = {
-  'offen': {
-    label: 'Noch offen',
+  'neu': {
+    label: 'Neu',
+    bgClass: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+    icon: Clock
+  },
+  'in Arbeit': {
+    label: 'In Arbeit',
     bgClass: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
     icon: Clock
   },
@@ -15,11 +20,23 @@ const statusConfig = {
   }
 };
 
-export default function ProjectsSection({ isDark, customers, loading, onRefreshData }) {
+export default function ProjectsSection({ isDark, customers = [], loading, onRefreshData }) {
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState({});
+
+  // ✨ Edit-Modal State
+  const [editOpen, setEditOpen] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [editForm, setEditForm] = useState({
+    onboarding_id: null,
+    status: 'neu',
+    datum: '',
+    mitarbeiter_id: '',
+    infrastructure_data: '{}',
+  });
 
   const classes = {
     bgClass: isDark ? 'bg-gray-800' : 'bg-white',
@@ -31,13 +48,15 @@ export default function ProjectsSection({ isDark, customers, loading, onRefreshD
 
   useEffect(() => {
     loadProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Projekte laden
   const loadProjects = async () => {
     setProjectsLoading(true);
     try {
       const data = await fetchJSON('/onboarding/projects');
-      setProjects(data || []);
+      setProjects(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Fehler beim Laden der Projekte:', error);
     } finally {
@@ -45,6 +64,7 @@ export default function ProjectsSection({ isDark, customers, loading, onRefreshD
     }
   };
 
+  // Nur Status schnell ändern (Badges/Buttons)
   const updateStatus = async (onboardingId, newStatus) => {
     setStatusLoading(prev => ({ ...prev, [onboardingId]: true }));
     try {
@@ -53,18 +73,12 @@ export default function ProjectsSection({ isDark, customers, loading, onRefreshD
         body: JSON.stringify({ status: newStatus })
       });
 
-      // Lokale State aktualisieren
-      setProjects(prev => prev.map(p => 
-        p.onboarding_id === onboardingId 
-          ? { ...p, status: newStatus }
-          : p
+      // Lokalen State updaten
+      setProjects(prev => prev.map(p =>
+        p.onboarding_id === onboardingId ? { ...p, status: newStatus } : p
       ));
 
-      // Dashboard-Statistiken neu laden
-      if (onRefreshData) {
-        await onRefreshData();
-      }
-
+      if (onRefreshData) await onRefreshData();
     } catch (error) {
       console.error('Fehler beim Aktualisieren des Status:', error);
       alert(`Fehler beim Aktualisieren: ${error.message}`);
@@ -73,9 +87,78 @@ export default function ProjectsSection({ isDark, customers, loading, onRefreshD
     }
   };
 
+  // Kundennamen lookup
   const getCustomerName = (kundeId) => {
-    const customer = customers.find(c => c.kunden_id === kundeId);
+    const customer = customers.find(c => Number(c.kunden_id) === Number(kundeId));
     return customer?.firmenname || 'Unbekannt';
+  };
+
+  // 🔎 Bearbeiten öffnen: Details laden + Modal öffnen
+  const openEdit = async (project) => {
+    try {
+      setEditLoading(true);
+      const data = await fetchJSON(`/onboarding/${project.onboarding_id}`);
+
+      setEditForm({
+        onboarding_id: data.onboarding_id,
+        status: data.status || 'neu',
+        datum: data.datum || new Date().toISOString().slice(0, 10),
+        mitarbeiter_id: data.mitarbeiter_id ?? '',
+        infrastructure_data: JSON.stringify(data.infrastructure_data || {}, null, 2),
+      });
+
+      setEditOpen(true);
+    } catch (e) {
+      console.error('Fehler beim Laden der Projektdetails:', e);
+      alert(`Fehler beim Laden der Projektdetails: ${e.message || e}`);
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  // 💾 Bearbeiten speichern
+  const saveEdit = async () => {
+    try {
+      setSaveLoading(true);
+
+      let infraParsed = {};
+      try {
+        infraParsed = editForm.infrastructure_data ? JSON.parse(editForm.infrastructure_data) : {};
+      } catch (e) {
+        alert('Infrastruktur-Daten sind kein gültiges JSON.');
+        setSaveLoading(false);
+        return;
+      }
+
+      const body = {
+        status: editForm.status,
+        datum: editForm.datum, // YYYY-MM-DD
+        mitarbeiter_id: editForm.mitarbeiter_id === '' ? null : Number(editForm.mitarbeiter_id),
+        infrastructure_data: infraParsed,
+      };
+
+      const updated = await fetchJSON(`/onboarding/${editForm.onboarding_id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      });
+
+      // Liste aktualisieren (Status/Datum fallen hier am meisten auf)
+      setProjects(prev => prev.map(p =>
+        p.onboarding_id === updated.onboarding_id
+          ? { ...p, status: updated.status, created_at: updated.created_at }
+          : p
+      ));
+
+      if (onRefreshData) await onRefreshData();
+
+      setEditOpen(false);
+      alert('Änderungen gespeichert ✅');
+    } catch (e) {
+      console.error('Fehler beim Speichern:', e);
+      alert(`Fehler beim Speichern: ${e.message || e}`);
+    } finally {
+      setSaveLoading(false);
+    }
   };
 
   if (projectsLoading) {
@@ -137,10 +220,10 @@ export default function ProjectsSection({ isDark, customers, loading, onRefreshD
               </thead>
               <tbody className={`${classes.bgClass} divide-y ${isDark ? 'divide-gray-700' : 'divide-gray-200'}`}>
                 {projects.map((project) => {
-                  const status = project.status || 'offen';
-                  const statusConf = statusConfig[status] || statusConfig['offen'];
+                  const status = project.status || 'neu';
+                  const statusConf = statusConfig[status] || statusConfig['neu'];
                   const StatusIcon = statusConf.icon;
-                  
+
                   return (
                     <tr key={project.onboarding_id} className={`hover:${isDark ? 'bg-gray-700' : 'bg-gray-50'} transition-colors duration-150`}>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -180,12 +263,22 @@ export default function ProjectsSection({ isDark, customers, loading, onRefreshD
                                 <CheckCircle className="w-4 h-4" />
                               </button>
                             )}
-                            {status !== 'offen' && (
+                            {status !== 'in Arbeit' && status !== 'erledigt' && (
                               <button
-                                onClick={() => updateStatus(project.onboarding_id, 'offen')}
+                                onClick={() => updateStatus(project.onboarding_id, 'in Arbeit')}
                                 disabled={statusLoading[project.onboarding_id]}
                                 className="p-1 text-yellow-600 hover:text-yellow-800 hover:bg-yellow-100 rounded transition-colors"
-                                title="Als offen markieren"
+                                title="In Arbeit setzen"
+                              >
+                                <Clock className="w-4 h-4" />
+                              </button>
+                            )}
+                            {status !== 'neu' && status !== 'erledigt' && (
+                              <button
+                                onClick={() => updateStatus(project.onboarding_id, 'neu')}
+                                disabled={statusLoading[project.onboarding_id]}
+                                className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded transition-colors"
+                                title="Zurück auf neu setzen"
                               >
                                 <Clock className="w-4 h-4" />
                               </button>
@@ -222,7 +315,7 @@ export default function ProjectsSection({ isDark, customers, loading, onRefreshD
                             Details
                           </button>
                           <button
-                            onClick={() => {/* TODO: Edit-Modal */}}
+                            onClick={() => openEdit(project)}
                             className="inline-flex items-center px-3 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 text-xs font-medium rounded-full transition-colors"
                             title="Projekt bearbeiten"
                           >
@@ -250,7 +343,7 @@ export default function ProjectsSection({ isDark, customers, loading, onRefreshD
               </h3>
               <button
                 onClick={() => setSelectedProject(null)}
-                className={`text-gray-400 hover:${classes.textSecondaryClass} transition-colors`}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
               >
                 ✕
               </button>
@@ -258,7 +351,7 @@ export default function ProjectsSection({ isDark, customers, loading, onRefreshD
             <div className={`text-sm ${classes.textMutedClass}`}>
               <p>Detailansicht wird hier implementiert...</p>
               <p>Onboarding-ID: {selectedProject.onboarding_id}</p>
-              <p>Status: {selectedProject.status || 'offen'}</p>
+              <p>Status: {selectedProject.status || 'neu'}</p>
             </div>
             <div className="mt-6 flex justify-end">
               <button
@@ -268,6 +361,103 @@ export default function ProjectsSection({ isDark, customers, loading, onRefreshD
                 Schließen
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✨ Edit-Modal */}
+      {editOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className={`${classes.bgClass} ${classes.borderClass} rounded-lg shadow-xl border p-6 max-w-3xl w-full max-h-[85vh] overflow-y-auto`}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className={`text-lg font-medium ${classes.textClass}`}>
+                Projekt bearbeiten – ID {editForm.onboarding_id}
+              </h3>
+              <button
+                onClick={() => setEditOpen(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {editLoading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                <p className={classes.textMutedClass}>Lade Projektdaten…</p>
+              </div>
+            ) : (
+              <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); saveEdit(); }}>
+                {/* Status */}
+                <div>
+                  <label className={`block text-sm mb-1 ${classes.textSecondaryClass}`}>Status</label>
+                  <select
+                    className="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700"
+                    value={editForm.status}
+                    onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}
+                  >
+                    <option value="neu">Neu</option>
+                    <option value="in Arbeit">In Arbeit</option>
+                    <option value="erledigt">Erledigt</option>
+                  </select>
+                </div>
+
+                {/* Datum */}
+                <div>
+                  <label className={`block text-sm mb-1 ${classes.textSecondaryClass}`}>Datum</label>
+                  <input
+                    type="date"
+                    className="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700"
+                    value={editForm.datum || ''}
+                    onChange={e => setEditForm(f => ({ ...f, datum: e.target.value }))}
+                  />
+                </div>
+
+                {/* Mitarbeiter-ID */}
+                <div>
+                  <label className={`block text-sm mb-1 ${classes.textSecondaryClass}`}>Mitarbeiter-ID (optional)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="z. B. 1"
+                    className="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700"
+                    value={editForm.mitarbeiter_id}
+                    onChange={e => setEditForm(f => ({ ...f, mitarbeiter_id: e.target.value }))}
+                  />
+                </div>
+
+                {/* Infrastruktur JSON */}
+                <div>
+                  <label className={`block text-sm mb-1 ${classes.textSecondaryClass}`}>Infrastruktur (JSON)</label>
+                  <textarea
+                    rows={10}
+                    className="w-full rounded border px-3 py-2 font-mono text-sm bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700"
+                    value={editForm.infrastructure_data}
+                    onChange={e => setEditForm(f => ({ ...f, infrastructure_data: e.target.value }))}
+                  />
+                  <p className={`text-xs mt-1 ${classes.textMutedClass}`}>
+                    Hinweis: Gültiges JSON angeben, z. B. {"{ \"netzwerk\": {}, \"hardware\": {} }"}
+                  </p>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditOpen(false)}
+                    className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600"
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saveLoading}
+                    className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {saveLoading ? 'Speichere…' : 'Speichern'}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

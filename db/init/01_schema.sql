@@ -1,9 +1,9 @@
 -- =====================================================================
---  PAULY DASHBOARD - GESAMTES SICHERES SCHEMA
---  (kompatibel zu deinem Backend /api/*, inkl. MFA + Sessions)
+--  PAULY DASHBOARD - GESAMTES SICHERES SCHEMA (korrigiert)
+--  kompatibel zu Backend /api/*, inkl. MFA + Sessions
 -- =====================================================================
 
--- Für bcrypt in SQL (nur nötig, wenn du Hashes in SQL erzeugst)
+-- Für bcrypt (crypt()/gen_salt)
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- -------------------------------------------------
@@ -17,30 +17,27 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- =====================================================================
--- MITARBEITER (sicher: nur Hash, MFA, Lockout, Sessions)
+-- MITARBEITER
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS mitarbeiter (
   mitarbeiter_id   BIGSERIAL PRIMARY KEY,
   vorname          TEXT        NOT NULL,
   name             TEXT        NOT NULL,
   email            TEXT        NOT NULL,
-  passwort_hash    TEXT        NOT NULL,                -- nur Hash (bcrypt)
+  passwort_hash    TEXT        NOT NULL,
   telefonnummer    TEXT,
   rolle            TEXT        NOT NULL DEFAULT 'aussendienst',
 
-  -- Security
   failed_attempts  INTEGER     NOT NULL DEFAULT 0,
   locked_until     TIMESTAMPTZ,
   last_login       TIMESTAMPTZ,
 
-  -- MFA
   mfa_enabled      BOOLEAN     NOT NULL DEFAULT FALSE,
   mfa_secret       TEXT,
   mfa_temp_secret  TEXT,
   mfa_enrolled_at  TIMESTAMPTZ,
   mfa_backup_codes JSONB,
 
-  -- Passwort-Reset
   reset_token      TEXT,
   reset_expires    TIMESTAMPTZ,
 
@@ -53,13 +50,11 @@ CREATE TABLE IF NOT EXISTS mitarbeiter (
     CHECK (failed_attempts >= 0)
 );
 
--- E-Mail eindeutig (case-insensitive)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mitarbeiter_email_unique ON mitarbeiter (LOWER(email));
 CREATE INDEX IF NOT EXISTS idx_mitarbeiter_last_login ON mitarbeiter (last_login);
 CREATE INDEX IF NOT EXISTS idx_mitarbeiter_locked ON mitarbeiter (locked_until) WHERE locked_until IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_mitarbeiter_reset_token ON mitarbeiter (reset_token) WHERE reset_token IS NOT NULL;
 
--- Optional: Rolle einschränken
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='chk_mitarbeiter_rolle') THEN
@@ -69,7 +64,6 @@ BEGIN
   END IF;
 END$$;
 
--- Optional: Hash-Format prüfen (bcrypt)
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='chk_passwort_hash_bcrypt') THEN
@@ -85,7 +79,7 @@ CREATE TRIGGER trg_mitarbeiter_updated
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- =====================================================================
--- CUSTOMERS & ANSPRECHPARTNER
+-- CUSTOMERS & CONTACTS
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS customers (
   kunden_id      BIGSERIAL PRIMARY KEY,
@@ -100,9 +94,8 @@ CREATE TABLE IF NOT EXISTS customers (
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- E-Mail & optional Firmenname eindeutig (falls gewünscht)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_email_unique ON customers (LOWER(email));
--- Falls mehrere Filialen gleichen Namens erlaubt sind, nächste Zeile weglassen:
+-- Falls du mehrere gleichnamige Filialen zulassen willst, nächste Zeile auskommentieren:
 CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_firmenname_unique ON customers (LOWER(firmenname));
 
 DROP TRIGGER IF EXISTS trg_customers_updated ON customers;
@@ -131,7 +124,7 @@ CREATE TRIGGER trg_customer_contacts_updated
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- =====================================================================
--- ONBOARDING (mit Feldern, die dein Backend nutzt)
+-- ONBOARDING (+ Subtabellen)
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS onboarding (
   onboarding_id        BIGSERIAL PRIMARY KEY,
@@ -141,10 +134,24 @@ CREATE TABLE IF NOT EXISTS onboarding (
   mitarbeiter_id       BIGINT      NULL REFERENCES mitarbeiter(mitarbeiter_id),
   infrastructure_data  JSONB       NOT NULL DEFAULT '{}'::jsonb,
   created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT chk_onboarding_status CHECK (status IN ('neu','in Arbeit','erledigt'))
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Status-Constraint für Onboarding: neu, in Arbeit, erledigt
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='chk_onboarding_status') THEN
+    ALTER TABLE onboarding DROP CONSTRAINT chk_onboarding_status;
+  END IF;
+  
+  ALTER TABLE onboarding
+    ADD CONSTRAINT chk_onboarding_status
+    CHECK (status IN ('neu','in Arbeit','erledigt'));
+END$$;
+
+-- Indexe
 CREATE INDEX IF NOT EXISTS onboarding_kunde_idx ON onboarding(kunde_id);
+CREATE INDEX IF NOT EXISTS idx_onboarding_status ON onboarding(status);
 CREATE INDEX IF NOT EXISTS idx_onboarding_created_at ON onboarding (created_at DESC);
 
 DROP TRIGGER IF EXISTS trg_onboarding_updated ON onboarding;
@@ -152,7 +159,7 @@ CREATE TRIGGER trg_onboarding_updated
   BEFORE UPDATE ON onboarding
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
--- -------- Netzwerk (engl. Name wie im Backend) --------
+-- Netzwerk
 CREATE TABLE IF NOT EXISTS onboarding_network (
   network_id              BIGSERIAL PRIMARY KEY,
   onboarding_id           BIGINT NOT NULL REFERENCES onboarding(onboarding_id) ON DELETE CASCADE,
@@ -174,7 +181,7 @@ CREATE TRIGGER trg_onboarding_network_updated
   BEFORE UPDATE ON onboarding_network
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
--- -------- Hardware --------
+-- Hardware
 CREATE TABLE IF NOT EXISTS onboarding_hardware (
   hardware_id     BIGSERIAL PRIMARY KEY,
   onboarding_id   BIGINT NOT NULL REFERENCES onboarding(onboarding_id) ON DELETE CASCADE,
@@ -184,7 +191,7 @@ CREATE TABLE IF NOT EXISTS onboarding_hardware (
   seriennummer    TEXT,
   standort        TEXT,
   ip              TEXT,
-  details_jsonb   JSONB,         -- echtes JSONB (dein Backend sendet JSON)
+  details_jsonb   JSONB,
   informationen   TEXT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -196,7 +203,7 @@ CREATE TRIGGER trg_onboarding_hardware_updated
   BEFORE UPDATE ON onboarding_hardware
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
--- -------- Mail --------
+-- Mail
 CREATE TABLE IF NOT EXISTS onboarding_mail (
   mail_id         BIGSERIAL PRIMARY KEY,
   onboarding_id   BIGINT NOT NULL REFERENCES onboarding(onboarding_id) ON DELETE CASCADE,
@@ -217,7 +224,7 @@ CREATE TRIGGER trg_onboarding_mail_updated
   BEFORE UPDATE ON onboarding_mail
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
--- -------- Software + Requirements + Apps --------
+-- Software + Requirements + Apps
 CREATE TABLE IF NOT EXISTS onboarding_software (
   software_id     BIGSERIAL PRIMARY KEY,
   onboarding_id   BIGINT NOT NULL REFERENCES onboarding(onboarding_id) ON DELETE CASCADE,
@@ -240,11 +247,12 @@ CREATE TRIGGER trg_onboarding_software_updated
   BEFORE UPDATE ON onboarding_software
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+-- WICHTIG: NOT NULL entfernt, damit Backend-NULLs erlaubt sind
 CREATE TABLE IF NOT EXISTS onboarding_software_requirements (
   requirement_id  BIGSERIAL PRIMARY KEY,
   software_id     BIGINT NOT NULL REFERENCES onboarding_software(software_id) ON DELETE CASCADE,
-  type            TEXT NOT NULL,
-  detail          TEXT NOT NULL,
+  type            TEXT,
+  detail          TEXT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -269,27 +277,7 @@ CREATE TRIGGER trg_swapps_updated
   BEFORE UPDATE ON onboarding_software_apps
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
--- -------- Backup --------
-CREATE TABLE IF NOT EXISTS onboarding_backup (
-  backup_id      BIGSERIAL PRIMARY KEY,
-  onboarding_id  BIGINT NOT NULL REFERENCES onboarding(onboarding_id) ON DELETE CASCADE,
-  tool           TEXT,
-  interval       TEXT,
-  retention      TEXT,
-  location       TEXT,
-  size           NUMERIC(12,2),
-  info           TEXT,
-  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS backup_onboarding_idx ON onboarding_backup(onboarding_id);
-
-DROP TRIGGER IF EXISTS trg_onboarding_backup_updated ON onboarding_backup;
-CREATE TRIGGER trg_onboarding_backup_updated
-  BEFORE UPDATE ON onboarding_backup
-  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
--- -------- Sonstiges --------
+-- Sonstiges
 CREATE TABLE IF NOT EXISTS onboarding_sonstiges (
   sonstiges_id   BIGSERIAL PRIMARY KEY,
   onboarding_id  BIGINT NOT NULL REFERENCES onboarding(onboarding_id) ON DELETE CASCADE,
@@ -337,14 +325,12 @@ CREATE TRIGGER trg_kalkulationen_updated
 CREATE TABLE IF NOT EXISTS kalkulation_positionen (
   position_id        BIGSERIAL PRIMARY KEY,
   kalkulations_id    BIGINT NOT NULL REFERENCES kalkulationen(kalkulations_id) ON DELETE CASCADE,
-
   section            TEXT,
   beschreibung       TEXT NOT NULL,
   anzahl             NUMERIC(12,2) NOT NULL DEFAULT 1,
   dauer_pro_einheit  NUMERIC(12,2) NOT NULL DEFAULT 0,
   stundensatz        NUMERIC(10,2),
   info               TEXT,
-
   created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -357,7 +343,6 @@ CREATE TRIGGER trg_kalk_pos_updated
   BEFORE UPDATE ON kalkulation_positionen
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
--- Summen-Neuberechnung
 CREATE OR REPLACE FUNCTION kalkulation_recalc(p_kalk_id BIGINT) RETURNS VOID AS $$
 DECLARE
   v_std   NUMERIC(10,2);
@@ -387,14 +372,9 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION kalkulation_recalc_trigger() RETURNS TRIGGER AS $$
-DECLARE
-  v_id BIGINT;
+DECLARE v_id BIGINT;
 BEGIN
-  IF TG_OP = 'DELETE' THEN
-    v_id := OLD.kalkulations_id;
-  ELSE
-    v_id := NEW.kalkulations_id;
-  END IF;
+  IF TG_OP = 'DELETE' THEN v_id := OLD.kalkulations_id; ELSE v_id := NEW.kalkulations_id; END IF;
   PERFORM kalkulation_recalc(v_id);
   RETURN NULL;
 END;
@@ -417,7 +397,6 @@ CREATE TRIGGER trg_kalk_header_recalc
 AFTER UPDATE OF stundensatz, mwst_prozent ON kalkulationen
 FOR EACH ROW EXECUTE FUNCTION kalkulation_header_recalc();
 
--- Komfort-View
 CREATE OR REPLACE VIEW v_kalkulationen_berechnet AS
 SELECT
   k.*,
@@ -515,7 +494,7 @@ FROM mitarbeiter
 WHERE locked_until IS NOT NULL AND locked_until > NOW();
 
 -- =====================================================================
--- WARTUNGS-FUNKTIONEN
+-- WARTUNG
 -- =====================================================================
 CREATE OR REPLACE FUNCTION cleanup_expired_sessions()
 RETURNS void AS $$
@@ -528,33 +507,28 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION security_maintenance()
 RETURNS void AS $$
 BEGIN
-  -- Sessions aufräumen
   DELETE FROM user_sessions WHERE expires_at < NOW() OR is_revoked = TRUE;
-
-  -- Alte Audit-Logs löschen (älter als 1 Jahr)
-  DELETE FROM audit_log WHERE created_at < NOW() - INTERVAL '1 year';
-
-  -- Abgelaufene Sperren zurücksetzen
+  DELETE FROM audit_log     WHERE created_at < NOW() - INTERVAL '1 year';
   UPDATE mitarbeiter 
      SET locked_until = NULL, failed_attempts = 0 
    WHERE locked_until IS NOT NULL AND locked_until < NOW();
-
   RAISE NOTICE 'Security maintenance completed at %', NOW();
 END;
 $$ LANGUAGE plpgsql;
 
 -- =====================================================================
--- DATEN NORMALISIEREN + TESTADMIN (DEV)
+-- NORMALISIERUNG + DEV-ADMIN
 -- =====================================================================
--- Emails konsequent in Kleinbuchstaben
 UPDATE mitarbeiter SET email = LOWER(email) WHERE email <> LOWER(email);
 UPDATE customers SET email = LOWER(email) WHERE email <> LOWER(email);
-UPDATE customer_contacts SET email = LOWER(email)
-WHERE email IS NOT NULL AND email <> LOWER(email);
+UPDATE customer_contacts
+   SET email = LOWER(email)
+ WHERE email IS NOT NULL AND email <> LOWER(email);
 
--- Entwicklungs-Admin (nur falls noch nicht vorhanden)
 INSERT INTO mitarbeiter (vorname, name, email, passwort_hash, telefonnummer, rolle)
 SELECT 'System','Admin','admin@pauly-dashboard.local',
        crypt('change_me_immediately', gen_salt('bf', 12)),
        '', 'admin'
-WHERE NOT EXISTS (SELECT 1 FROM mitarbeiter WHERE LOWER(email)=LOWER('admin@pauly-dashboard.local'));
+WHERE NOT EXISTS (
+  SELECT 1 FROM mitarbeiter WHERE LOWER(email)=LOWER('admin@pauly-dashboard.local')
+);

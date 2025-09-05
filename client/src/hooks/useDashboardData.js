@@ -4,7 +4,7 @@ import { fetchJSON } from 'services/api'; // absolut dank baseUrl: "src"
 
 export default function useDashboardData() {
   const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState({ activeCustomers: 0, monthlyHours: 0, monthlyRevenue: 0 });
+  const [stats, setStats] = useState({ activeCustomers: 0, runningProjects: 0, totalHours: 0 });
   const [customers, setCustomers] = useState([]);
   const [kalkulationen, setKalkulationen] = useState([]);
 
@@ -29,12 +29,12 @@ export default function useDashboardData() {
       if (statsP.status === 'fulfilled' && statsP.value) {
         const s = statsP.value;
         setStats({
-          activeCustomers: Number(s.activeCustomers ?? 0),
-          monthlyHours: Number(s.monthlyHours ?? s.avg_zeit ?? 0),
-          monthlyRevenue: Number(s.monthlyRevenue ?? s.total_umsatz ?? 0),
-        });
+  activeCustomers: Number(s.activeCustomers ?? 0),
+  runningProjects: Number(s.runningProjects ?? 0),  // NEU
+  totalHours: Number(s.totalHours ?? 0),            // NEU
+});
       } else {
-        setStats({ activeCustomers: 0, monthlyHours: 0, monthlyRevenue: 0 });
+        setStats({ activeCustomers: 0, runningProjects: 0, totalHours: 0 });
       }
 
       // Customers
@@ -46,7 +46,7 @@ export default function useDashboardData() {
       // Optional: Logging
       console.error('loadDashboardData failed:', err);
       if (isMountedRef.current) {
-        setStats({ activeCustomers: 0, monthlyHours: 0, monthlyRevenue: 0 });
+        setStats({ activeCustomers: 0, runningProjects: 0, totalHours: 0 });
         setCustomers([]);
         setKalkulationen([]);
       }
