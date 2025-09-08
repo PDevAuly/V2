@@ -87,46 +87,31 @@ export default function DashboardPage({ onLogout, userInfo }) {
     kalkulationen,
   };
 
-  // Korrigierte onFinalSubmit Funktion
+  // Kombinierte onFinalSubmit Funktion - Ein Request für alles
   const handleFinalSubmit = async () => {
-    setOnboardingLoading(true); // Separater Loading-State für Onboarding
-    
+    setOnboardingLoading(true);
     try {
       console.log('🚀 Speichere Onboarding-Daten...');
       console.log('Kundendaten:', onboardingCustomerData);
       console.log('Infrastrukturdaten:', infrastructureData);
-      
-      // 1) Kunde speichern - MIT /api Prefix!
-      const customerResponse = await fetchJSON('/customers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(onboardingCustomerData),
-      });
 
-      console.log('✅ Kunde gespeichert:', customerResponse);
-      
-      const kundeId = customerResponse?.kunde?.kunden_id;
-      if (!kundeId) {
-        throw new Error('Keine Kunden-ID erhalten. Server-Antwort: ' + JSON.stringify(customerResponse));
-      }
-
-      // 2) Onboarding speichern - MIT /api Prefix!
-      const onboardingResponse = await fetchJSON('/onboarding', {
+      // Ein Request: Kunde + Infrastruktur
+      const resp = await fetchJSON('/customers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          kunde_id: kundeId,
-          infrastructure_data: infrastructureData,
+          ...onboardingCustomerData,
+          infrastructure_data: infrastructureData, // <<<< alles mitgeben
         }),
       });
+      
+      console.log('✅ Kunde + Infrastruktur gespeichert:', resp);
 
-      console.log('✅ Onboarding gespeichert:', onboardingResponse);
-
-      // 3) Dashboard neu laden
+      // Zahlen aktualisieren (Kunden/Projekte)
       await loadDashboardData();
       console.log('✅ Dashboard-Daten aktualisiert');
 
-      // 4) Form-States zurücksetzen
+      // Form zurücksetzen
       setCurrentOnboardingStep(1);
       setOnboardingCustomerData({
         firmenname: '', strasse: '', hausnummer: '', ort: '', plz: '',
@@ -137,27 +122,17 @@ export default function DashboardPage({ onLogout, userInfo }) {
         netzwerk: {}, hardware: {}, mail: {}, software: {}, backup: {}, sonstiges: { text: '' },
       });
 
-      // 5) Zur Kundenliste wechseln
+      // zurück zur Kundenliste (oder Overview – wie du willst)
       setActive('customers');
       
-      // Erfolgs-Benachrichtigung
-      alert('✅ Kunde und IT-Infrastruktur erfolgreich gespeichert!');
+      // Meldung wie gewünscht
+      alert(resp?.message || 'Kunde wurde angelegt.');
       return true;
       
     } catch (err) {
       console.error('❌ Fehler beim Speichern:', err);
-      
-      // Detaillierteres Error-Handling
-      let errorMessage = 'Unbekannter Fehler';
-      if (err.message) {
-        errorMessage = err.message;
-      } else if (err.error) {
-        errorMessage = err.error;
-      }
-      
-      alert(`❌ Fehler beim Speichern:\n${errorMessage}\n\nBitte prüfen Sie die Browser-Konsole für Details.`);
-      
-      // Bei Fehler NICHT den Step zurücksetzen!
+      const msg = err?.message || err?.error || 'Unbekannter Fehler';
+      alert(`❌ Fehler beim Speichern:\n${msg}`);
       return false;
     } finally {
       setOnboardingLoading(false);
@@ -266,7 +241,7 @@ export default function DashboardPage({ onLogout, userInfo }) {
               </LazyErrorBoundary>
             )}
 
-            {!['overview', 'customers', 'onboarding', 'stundenkalkulation'].includes(active) && (
+            {!['overview', 'customers', 'projects', 'onboarding', 'stundenkalkulation'].includes(active) && (
               <div className="p-6 text-center">
                 <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Sektion nicht gefunden</h2>
                 <p className="text-gray-600 dark:text-gray-400 mb-4">Die angeforderte Sektion "{active}" existiert nicht.</p>

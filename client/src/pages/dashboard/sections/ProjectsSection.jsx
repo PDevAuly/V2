@@ -22,11 +22,15 @@ const statusConfig = {
 
 export default function ProjectsSection({ isDark, customers = [], loading, onRefreshData }) {
   const [projects, setProjects] = useState([]);
-  const [selectedProject, setSelectedProject] = useState(null);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState({});
 
-  // ✨ Edit-Modal State
+  // Details-Modal
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailData, setDetailData] = useState(null);
+
+  // Edit-Modal
   const [editOpen, setEditOpen] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
@@ -51,7 +55,6 @@ export default function ProjectsSection({ isDark, customers = [], loading, onRef
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Projekte laden
   const loadProjects = async () => {
     setProjectsLoading(true);
     try {
@@ -64,7 +67,12 @@ export default function ProjectsSection({ isDark, customers = [], loading, onRef
     }
   };
 
-  // Nur Status schnell ändern (Badges/Buttons)
+  const getCustomerName = (kundeId) => {
+    const customer = customers.find(c => Number(c.kunden_id) === Number(kundeId));
+    return customer?.firmenname || 'Unbekannt';
+  };
+
+  // Status schnell ändern
   const updateStatus = async (onboardingId, newStatus) => {
     setStatusLoading(prev => ({ ...prev, [onboardingId]: true }));
     try {
@@ -72,12 +80,9 @@ export default function ProjectsSection({ isDark, customers = [], loading, onRef
         method: 'PATCH',
         body: JSON.stringify({ status: newStatus })
       });
-
-      // Lokalen State updaten
       setProjects(prev => prev.map(p =>
         p.onboarding_id === onboardingId ? { ...p, status: newStatus } : p
       ));
-
       if (onRefreshData) await onRefreshData();
     } catch (error) {
       console.error('Fehler beim Aktualisieren des Status:', error);
@@ -87,36 +92,76 @@ export default function ProjectsSection({ isDark, customers = [], loading, onRef
     }
   };
 
-  // Kundennamen lookup
-  const getCustomerName = (kundeId) => {
-    const customer = customers.find(c => Number(c.kunden_id) === Number(kundeId));
-    return customer?.firmenname || 'Unbekannt';
+  // DETAILS: lädt vollständige Daten (inkl. Hardwareliste) und öffnet Modal
+  const openDetails = async (project) => {
+    try {
+      setDetailLoading(true);
+      const data = await fetchJSON(`/onboarding/${project.onboarding_id}`);
+      setDetailData(data);
+      setDetailOpen(true);
+    } catch (e) {
+      console.error('Fehler beim Laden der Projektdetails:', e);
+      alert(`Fehler beim Laden der Projektdetails: ${e.message || e}`);
+    } finally {
+      setDetailLoading(false);
+    }
   };
 
-  // 🔎 Bearbeiten öffnen: Details laden + Modal öffnen
+  // BEARBEITEN: lädt Details, befüllt JSON-Editor und öffnet Modal
   const openEdit = async (project) => {
     try {
       setEditLoading(true);
       const data = await fetchJSON(`/onboarding/${project.onboarding_id}`);
 
+      // Infrastruktur-Objekt aus den Detailfeldern zusammenbauen
+      const infra = {
+        netzwerk: data.netzwerk || {},
+        hardware: Array.isArray(data.hardware) ? data.hardware.map(h => ({
+          typ: h.typ ?? null,
+          hersteller: h.hersteller ?? null,
+          modell: h.modell ?? null,
+          seriennummer: h.seriennummer ?? null,
+          standort: h.standort ?? null,
+          ip: h.ip ?? null,
+          details_jsonb: h.details_jsonb ?? {},
+          informationen: h.informationen ?? null,
+        })) : [],
+        software: Array.isArray(data.software) ? data.software.map(s => ({
+          name: s.name ?? null,
+          licenses: s.licenses ?? null,
+          critical: s.critical ?? null,
+          description: s.description ?? null,
+          virenschutz: s.virenschutz ?? null,
+          schnittstellen: s.schnittstellen ?? null,
+          wartungsvertrag: !!s.wartungsvertrag,
+          migration_support: !!s.migration_support,
+          verwendete_applikationen_text: s.verwendete_applikationen_text ?? null,
+          requirements: Array.isArray(s.requirements) ? s.requirements : [],
+          apps: Array.isArray(s.apps) ? s.apps : [],
+        })) : [],
+        mail: data.mail || {},
+        backup: data.backup || {},
+        sonstiges: data.sonstiges || {},
+      };
+
       setEditForm({
         onboarding_id: data.onboarding_id,
         status: data.status || 'neu',
-        datum: data.datum || new Date().toISOString().slice(0, 10),
+        datum: (data.datum || '').slice(0, 10),
         mitarbeiter_id: data.mitarbeiter_id ?? '',
-        infrastructure_data: JSON.stringify(data.infrastructure_data || {}, null, 2),
+        infrastructure_data: JSON.stringify(infra, null, 2),
       });
 
       setEditOpen(true);
     } catch (e) {
-      console.error('Fehler beim Laden der Projektdetails:', e);
+      console.error('Fehler beim Laden der Projektdetails (Edit):', e);
       alert(`Fehler beim Laden der Projektdetails: ${e.message || e}`);
     } finally {
       setEditLoading(false);
     }
   };
 
-  // 💾 Bearbeiten speichern
+  // BEARBEITEN speichern
   const saveEdit = async () => {
     try {
       setSaveLoading(true);
@@ -132,23 +177,18 @@ export default function ProjectsSection({ isDark, customers = [], loading, onRef
 
       const body = {
         status: editForm.status,
-        datum: editForm.datum, // YYYY-MM-DD
+        datum: editForm.datum || null,
         mitarbeiter_id: editForm.mitarbeiter_id === '' ? null : Number(editForm.mitarbeiter_id),
         infrastructure_data: infraParsed,
       };
 
-      const updated = await fetchJSON(`/onboarding/${editForm.onboarding_id}`, {
+      await fetchJSON(`/onboarding/${editForm.onboarding_id}`, {
         method: 'PATCH',
         body: JSON.stringify(body),
       });
 
-      // Liste aktualisieren (Status/Datum fallen hier am meisten auf)
-      setProjects(prev => prev.map(p =>
-        p.onboarding_id === updated.onboarding_id
-          ? { ...p, status: updated.status, created_at: updated.created_at }
-          : p
-      ));
-
+      // Backend gibt nur message + onboarding_id zurück -> Liste neu laden
+      await loadProjects();
       if (onRefreshData) await onRefreshData();
 
       setEditOpen(false);
@@ -307,7 +347,7 @@ export default function ProjectsSection({ isDark, customers = [], loading, onRef
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex space-x-2">
                           <button
-                            onClick={() => setSelectedProject(project)}
+                            onClick={() => openDetails(project)}
                             className="inline-flex items-center px-3 py-1 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900 dark:hover:bg-blue-800 text-blue-800 dark:text-blue-200 text-xs font-medium rounded-full transition-colors"
                             title="Projekt-Details anzeigen"
                           >
@@ -333,39 +373,160 @@ export default function ProjectsSection({ isDark, customers = [], loading, onRef
         </div>
       )}
 
-      {/* Projekt-Details Modal - TODO: Implementieren */}
-      {selectedProject && (
+      {/* DETAILS Modal */}
+      {detailOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className={`${classes.bgClass} ${classes.borderClass} rounded-lg shadow-xl border p-6 max-w-4xl w-full max-h-[80vh] overflow-y-auto`}>
+          <div className={`${classes.bgClass} ${classes.borderClass} rounded-lg shadow-xl border p-6 max-w-5xl w-full max-h-[85vh] overflow-y-auto`}>
             <div className="flex items-center justify-between mb-4">
               <h3 className={`text-lg font-medium ${classes.textClass}`}>
-                Projekt-Details: {getCustomerName(selectedProject.kunde_id)}
+                Projekt-Details: {detailData ? getCustomerName(detailData.kunde_id) : '—'}
               </h3>
               <button
-                onClick={() => setSelectedProject(null)}
+                onClick={() => setDetailOpen(false)}
                 className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
               >
                 ✕
               </button>
             </div>
-            <div className={`text-sm ${classes.textMutedClass}`}>
-              <p>Detailansicht wird hier implementiert...</p>
-              <p>Onboarding-ID: {selectedProject.onboarding_id}</p>
-              <p>Status: {selectedProject.status || 'neu'}</p>
-            </div>
-            <div className="mt-6 flex justify-end">
-              <button
-                onClick={() => setSelectedProject(null)}
-                className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
-              >
-                Schließen
-              </button>
-            </div>
+
+            {detailLoading || !detailData ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                <p className={classes.textMutedClass}>Lade Details…</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Meta */}
+                <div className={`${classes.bgClass} ${classes.borderClass} rounded border p-4`}>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                    <div><span className="font-medium">Onboarding-ID:</span> {detailData.onboarding_id}</div>
+                    <div><span className="font-medium">Status:</span> {detailData.status}</div>
+                    <div><span className="font-medium">Datum:</span> {detailData.datum ? new Date(detailData.datum).toLocaleDateString('de-DE') : '—'}</div>
+                    <div><span className="font-medium">Mitarbeiter-ID:</span> {detailData.mitarbeiter_id ?? '—'}</div>
+                  </div>
+                </div>
+
+                {/* Netzwerk */}
+                <div className={`${classes.bgClass} ${classes.borderClass} rounded border p-4`}>
+                  <h4 className={`text-md font-semibold mb-3 ${classes.textClass}`}>Netzwerk</h4>
+                  {detailData.netzwerk ? (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+                      <div><span className="font-medium">Zugangsart:</span> {detailData.netzwerk.internetzugangsart ?? '—'}</div>
+                      <div><span className="font-medium">Firewall-Modell:</span> {detailData.netzwerk.firewall_modell ?? '—'}</div>
+                      <div><span className="font-medium">Feste IP:</span> {detailData.netzwerk.feste_ip_vorhanden ? 'Ja' : 'Nein'}</div>
+                      <div><span className="font-medium">IP-Adresse:</span> {detailData.netzwerk.ip_adresse ?? '—'}</div>
+                      <div><span className="font-medium">VPN erforderlich:</span> {detailData.netzwerk.vpn_einwahl_erforderlich ? 'Ja' : 'Nein'}</div>
+                      <div><span className="font-medium">VPN User (aktuell/geplant):</span> {detailData.netzwerk.aktuelle_vpn_user ?? 0} / {detailData.netzwerk.geplante_vpn_user ?? 0}</div>
+                      <div className="md:col-span-3"><span className="font-medium">Informationen:</span> {detailData.netzwerk.informationen ?? '—'}</div>
+                    </div>
+                  ) : (
+                    <p className={classes.textMutedClass}>Keine Netzwerkdaten erfasst.</p>
+                  )}
+                </div>
+
+                {/* Hardware – komplette Liste */}
+                <div className={`${classes.bgClass} ${classes.borderClass} rounded border p-4`}>
+                  <h4 className={`text-md font-semibold mb-3 ${classes.textClass}`}>Hardware ({detailData.hardware?.length || 0})</h4>
+                  {Array.isArray(detailData.hardware) && detailData.hardware.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead className={`${isDark ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                          <tr>
+                            {['Typ', 'Hersteller', 'Modell', 'Seriennummer', 'Standort', 'IP', 'Infos/Details'].map(h => (
+                              <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className={`${isDark ? 'divide-gray-700' : 'divide-gray-200'} divide-y`}>
+                          {detailData.hardware.map(h => (
+                            <tr key={h.hardware_id}>
+                              <td className="px-3 py-2">{h.typ ?? '—'}</td>
+                              <td className="px-3 py-2">{h.hersteller ?? '—'}</td>
+                              <td className="px-3 py-2">{h.modell ?? '—'}</td>
+                              <td className="px-3 py-2">{h.seriennummer ?? '—'}</td>
+                              <td className="px-3 py-2">{h.standort ?? '—'}</td>
+                              <td className="px-3 py-2">{h.ip ?? '—'}</td>
+                              <td className="px-3 py-2">
+                                {h.informationen ? <div className="mb-1">{h.informationen}</div> : null}
+                                {h.details_jsonb ? (
+                                  <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(h.details_jsonb, null, 2)}</pre>
+                                ) : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className={classes.textMutedClass}>Keine Hardware erfasst.</p>
+                  )}
+                </div>
+
+                {/* Software (kurz) */}
+                <div className={`${classes.bgClass} ${classes.borderClass} rounded border p-4`}>
+                  <h4 className={`text-md font-semibold mb-3 ${classes.textClass}`}>Software ({detailData.software?.length || 0})</h4>
+                  {Array.isArray(detailData.software) && detailData.software.length > 0 ? (
+                    <ul className="list-disc pl-5 text-sm">
+                      {detailData.software.map(s => (
+                        <li key={s.software_id} className="mb-1">
+                          <span className="font-medium">{s.name || 'Unbenannt'}</span>
+                          {typeof s.licenses === 'number' ? ` · Lizenzen: ${s.licenses}` : ''}
+                          {s.apps?.length ? ` · Apps: ${s.apps.map(a => a.name).join(', ')}` : ''}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className={classes.textMutedClass}>Keine Software erfasst.</p>
+                  )}
+                </div>
+
+                {/* Mail & Backup & Sonstiges (kurz) */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className={`${classes.bgClass} ${classes.borderClass} rounded border p-4`}>
+                    <h4 className={`text-md font-semibold mb-3 ${classes.textClass}`}>Mail</h4>
+                    {detailData.mail ? (
+                      <div className="text-sm space-y-1">
+                        <div><span className="font-medium">Anbieter:</span> {detailData.mail.anbieter ?? '—'}</div>
+                        <div><span className="font-medium">Postfächer/Shared:</span> {detailData.mail.anzahl_postfach ?? 0} / {detailData.mail.anzahl_shared ?? 0}</div>
+                        <div><span className="font-medium">POP3:</span> {detailData.mail.pop3_connector ? 'Ja' : 'Nein'}</div>
+                        <div><span className="font-medium">Mobil:</span> {detailData.mail.mobiler_zugriff ? 'Ja' : 'Nein'}</div>
+                      </div>
+                    ) : <p className={classes.textMutedClass}>Keine Maildaten.</p>}
+                  </div>
+
+                  <div className={`${classes.bgClass} ${classes.borderClass} rounded border p-4`}>
+                    <h4 className={`text-md font-semibold mb-3 ${classes.textClass}`}>Backup</h4>
+                    {detailData.backup ? (
+                      <div className="text-sm space-y-1">
+                        <div><span className="font-medium">Tool:</span> {detailData.backup.tool ?? '—'}</div>
+                        <div><span className="font-medium">Intervall:</span> {detailData.backup.interval ?? '—'}</div>
+                        <div><span className="font-medium">Retention:</span> {detailData.backup.retention ?? '—'}</div>
+                        <div><span className="font-medium">Ort:</span> {detailData.backup.location ?? '—'}</div>
+                      </div>
+                    ) : <p className={classes.textMutedClass}>Keine Backup-Daten.</p>}
+                  </div>
+
+                  <div className={`${classes.bgClass} ${classes.borderClass} rounded border p-4`}>
+                    <h4 className={`text-md font-semibold mb-3 ${classes.textClass}`}>Sonstiges</h4>
+                    <div className="text-sm whitespace-pre-wrap">{detailData.sonstiges?.text ?? '—'}</div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setDetailOpen(false)}
+                    className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+                  >
+                    Schließen
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* ✨ Edit-Modal */}
+      {/* EDIT Modal */}
       {editOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className={`${classes.bgClass} ${classes.borderClass} rounded-lg shadow-xl border p-6 max-w-3xl w-full max-h-[85vh] overflow-y-auto`}>
@@ -436,7 +597,7 @@ export default function ProjectsSection({ isDark, customers = [], loading, onRef
                     onChange={e => setEditForm(f => ({ ...f, infrastructure_data: e.target.value }))}
                   />
                   <p className={`text-xs mt-1 ${classes.textMutedClass}`}>
-                    Hinweis: Gültiges JSON angeben, z. B. {"{ \"netzwerk\": {}, \"hardware\": {} }"}
+                    Hinweis: Gültiges JSON angeben, z. B. {'{ "netzwerk": {}, "hardware": [], "software": [] }'}
                   </p>
                 </div>
 

@@ -1,6 +1,8 @@
 // backend/server.js
 'use strict';
 
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
@@ -9,31 +11,11 @@ const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
-require('dotenv').config();
 
-// ========= Konstante =========
+// ========= Konstante / Flags =========
 const SALT_ROUNDS = 12;
 const MFA_ISSUER = process.env.MFA_ISSUER || 'Pauly Dashboard';
 const isProd = process.env.NODE_ENV === 'production';
-
-// ========= Passwort-Validierungsfunktion =========
-const validatePassword = (password) => {
-  const errors = [];
-  
-  if (!password || password.length < 8) {
-    errors.push('Passwort muss mindestens 8 Zeichen lang sein');
-  }
-  
-  if (!/[A-Z]/.test(password)) {
-    errors.push('Passwort muss mindestens einen Großbuchstaben enthalten');
-  }
-  
-  if (!/[!@#$%^&*()_+=\[\]{}|;:,.<>?/~`-]/.test(password)) {
-    errors.push('Passwort muss mindestens ein Sonderzeichen enthalten');
-  }
-  
-  return errors;
-};
 
 // ========= App / Middleware =========
 const app = express();
@@ -61,7 +43,10 @@ const pool = new Pool({
 });
 
 // ========= Helper =========
-const toNumberOrNull = (v) => (v === '' || v === undefined || v === null ? null : Number(v));
+const toNumberOrNull = (v) =>
+  v === '' || v === undefined || v === null || isNaN(Number(v)) ? null : Number(v);
+
+const toBool = (v) => v === true || v === 'true' || v === 1 || v === '1';
 
 const normalizeJSONB = (val) => {
   if (val === undefined || val === null) return null;
@@ -93,7 +78,7 @@ const verifyToken = (req, res, next) => {
     if (!isProd) return next(); // im Dev-Modus durchlassen
     return res.status(401).json({ error: 'Ungültiger Access-Token. Bitte loggen Sie sich erneut ein.' });
   }
-  // Hier später echte JWT-Prüfung ergänzen
+  // TODO: echte JWT-Prüfung
   next();
 };
 
@@ -123,7 +108,15 @@ app.get('/api/test', (_req, res) => {
   res.json({ message: 'Backend läuft!', timestamp: new Date().toISOString() });
 });
 
-// ========= Auth: Login / Register =========
+// ========= Auth: Login / Register / Passwortwechsel / Reset / MFA =========
+const validatePassword = (password) => {
+  const errors = [];
+  if (!password || password.length < 8) errors.push('Passwort muss mindestens 8 Zeichen lang sein');
+  if (!/[A-Z]/.test(password)) errors.push('Passwort muss mindestens einen Großbuchstaben enthalten');
+  if (!/[!@#$%^&*()_+=\[\]{}|;:,.<>?/~`-]/.test(password)) errors.push('Passwort muss mindestens ein Sonderzeichen enthalten');
+  return errors;
+};
+
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, passwort } = req.body;
@@ -155,7 +148,6 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Falsches Passwort' });
     }
 
-    // success: counters reset + last_login
     await pool.query(
       `UPDATE mitarbeiter
           SET failed_attempts=0, locked_until=NULL, last_login=NOW(), updated_at=NOW()
@@ -167,7 +159,6 @@ app.post('/api/auth/login', async (req, res) => {
       return res.json({ status: 'MFA_REQUIRED', user_id: u.mitarbeiter_id, email: u.email });
     }
 
-    // (Optional) Tokens ausstellen – hier Dummy fürs Frontend
     res.json({
       message: 'Login erfolgreich',
       accessToken: 'dev-access-token',
@@ -190,36 +181,21 @@ app.post('/api/auth/login', async (req, res) => {
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { vorname, nachname, email, passwort } = req.body;
-    
-    // Input-Validierung
     if (!vorname || !nachname || !email || !passwort) {
-      return res.status(400).json({
-        error: 'Alle Felder sind erforderlich'
-      });
+      return res.status(400).json({ error: 'Alle Felder sind erforderlich' });
     }
-    
-    // E-Mail-Format validieren
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({
-        error: 'Ungültiges E-Mail-Format'
-      });
-    }
-    
-    // Passwort-Validierung
+    if (!emailRegex.test(email)) return res.status(400).json({ error: 'Ungültiges E-Mail-Format' });
+
     const passwordErrors = validatePassword(passwort);
     if (passwordErrors.length > 0) {
-      return res.status(400).json({
-        error: 'Passwort-Anforderungen nicht erfüllt',
-        details: passwordErrors
-      });
+      return res.status(400).json({ error: 'Passwort-Anforderungen nicht erfüllt', details: passwordErrors });
     }
 
     const exists = await pool.query('SELECT 1 FROM mitarbeiter WHERE LOWER(email)=LOWER($1)', [email]);
     if (exists.rows.length) return res.status(400).json({ error: 'Benutzer existiert bereits' });
 
     const passwort_hash = await hashPassword(passwort);
-
     const r = await pool.query(
       `INSERT INTO mitarbeiter (name, vorname, email, passwort_hash, telefonnummer, rolle)
        VALUES ($1,$2,LOWER($3),$4,'','aussendienst')
@@ -239,93 +215,45 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// ========= Change Password (nach den bestehenden Auth-Routen einfügen) =========
 app.post('/api/auth/change-password', async (req, res) => {
   try {
     const { currentPassword, newPassword, user_id } = req.body;
-    
-    // Input-Validierung
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({
-        error: 'Aktuelles und neues Passwort sind erforderlich'
-      });
-    }
-    
-    // TEMPORÄRE LÖSUNG: user_id wird im Request mitgeschickt
-    // TODO: Später durch echte Session/JWT-Authentifizierung ersetzen
-    if (!user_id) {
-      return res.status(400).json({
-        error: 'Benutzer-ID ist erforderlich'
-      });
-    }
-    
-    // Passwort-Validierung (verwende die bestehende Funktion)
+    if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Aktuelles und neues Passwort sind erforderlich' });
+    if (!user_id) return res.status(400).json({ error: 'Benutzer-ID ist erforderlich' });
+
     const passwordErrors = validatePassword(newPassword);
     if (passwordErrors.length > 0) {
-      return res.status(400).json({
-        error: 'Neues Passwort erfüllt nicht die Anforderungen',
-        details: passwordErrors
-      });
+      return res.status(400).json({ error: 'Neues Passwort erfüllt nicht die Anforderungen', details: passwordErrors });
     }
-    
-    // User aus Datenbank holen (richtige Tabelle: mitarbeiter)
+
     const userResult = await pool.query(
       'SELECT mitarbeiter_id, email, passwort_hash FROM mitarbeiter WHERE mitarbeiter_id = $1',
       [user_id]
     );
-    
-    if (userResult.rows.length === 0) {
-      return res.status(404).json({
-        error: 'Benutzer nicht gefunden'
-      });
-    }
-    
+    if (!userResult.rows.length) return res.status(404).json({ error: 'Benutzer nicht gefunden' });
+
     const user = userResult.rows[0];
-    
-    // Aktuelles Passwort prüfen (verwende bestehende verifyPassword Funktion)
     const isValid = await verifyPassword(currentPassword, user.passwort_hash);
-    
-    if (!isValid) {
-      return res.status(401).json({
-        error: 'Aktuelles Passwort ist falsch'
-      });
-    }
-    
-    // Prüfen ob neues Passwort identisch mit altem ist
+    if (!isValid) return res.status(401).json({ error: 'Aktuelles Passwort ist falsch' });
+
     const isSamePassword = await verifyPassword(newPassword, user.passwort_hash);
-    if (isSamePassword) {
-      return res.status(400).json({
-        error: 'Das neue Passwort muss sich vom aktuellen unterscheiden'
-      });
-    }
-    
-    // Neues Passwort hashen (verwende bestehende hashPassword Funktion)
+    if (isSamePassword) return res.status(400).json({ error: 'Das neue Passwort muss sich vom aktuellen unterscheiden' });
+
     const newHashedPassword = await hashPassword(newPassword);
-    
-    // Passwort in Datenbank aktualisieren (richtige Tabelle und Spalte)
     await pool.query(
       'UPDATE mitarbeiter SET passwort_hash = $1, updated_at = NOW() WHERE mitarbeiter_id = $2',
       [newHashedPassword, user_id]
     );
-    
-    // Erfolgreiche Antwort
-    res.json({
-      message: 'Passwort erfolgreich geändert',
-      timestamp: new Date().toISOString()
-    });
-    
-    // Audit-Log für Sicherheit
+
+    res.json({ message: 'Passwort erfolgreich geändert', timestamp: new Date().toISOString() });
     console.log(`Password changed for user: ${user.email} at ${new Date().toISOString()}`);
-    
   } catch (error) {
     console.error('Change password error:', error);
-    res.status(500).json({
-      error: 'Serverfehler beim Ändern des Passworts'
-    });
+    res.status(500).json({ error: 'Serverfehler beim Ändern des Passworts' });
   }
 });
 
-// ========= MFA =========
+// MFA
 app.post('/api/auth/mfa/setup/start', verifyToken, async (req, res) => {
   try {
     const { user_id } = req.body;
@@ -349,10 +277,8 @@ app.post('/api/auth/mfa/setup/start', verifyToken, async (req, res) => {
     });
 
     const qrDataUrl = await QRCode.toDataURL(otpauth);
-
     await pool.query('UPDATE mitarbeiter SET mfa_temp_secret=$1 WHERE mitarbeiter_id=$2', [
-      secret.base32,
-      user_id,
+      secret.base32, user_id,
     ]);
 
     res.json({ otpauth, qrDataUrl, secret: secret.base32 });
@@ -444,8 +370,7 @@ app.post('/api/auth/mfa/verify', async (req, res) => {
         const newCodes = [...codes];
         newCodes.splice(idx, 1);
         await pool.query('UPDATE mitarbeiter SET mfa_backup_codes=$1 WHERE mitarbeiter_id=$2', [
-          JSON.stringify(newCodes),
-          user_id,
+          JSON.stringify(newCodes), user_id,
         ]);
         verified = true;
       }
@@ -472,7 +397,7 @@ app.post('/api/auth/mfa/verify', async (req, res) => {
   }
 });
 
-// ========= Passwort zurücksetzen =========
+// Passwort-Reset
 app.post('/api/auth/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
@@ -491,9 +416,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     const resetToken = crypto.randomBytes(32).toString('hex');
     const resetExpires = new Date(Date.now() + 60 * 60 * 1000);
     await pool.query('UPDATE mitarbeiter SET reset_token=$1, reset_expires=$2 WHERE mitarbeiter_id=$3', [
-      resetToken,
-      resetExpires,
-      user.rows[0].mitarbeiter_id,
+      resetToken, resetExpires, user.rows[0].mitarbeiter_id,
     ]);
 
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
@@ -542,13 +465,9 @@ app.post('/api/auth/reset-password', async (req, res) => {
     const { token, newPassword } = req.body;
     if (!token || !newPassword) return res.status(400).json({ error: 'Token und neues Passwort sind erforderlich' });
 
-    // Passwort-Validierung
     const passwordErrors = validatePassword(newPassword);
     if (passwordErrors.length > 0) {
-      return res.status(400).json({
-        error: 'Neues Passwort erfüllt nicht die Anforderungen',
-        details: passwordErrors
-      });
+      return res.status(400).json({ error: 'Neues Passwort erfüllt nicht die Anforderungen', details: passwordErrors });
     }
 
     const u = await pool.query(
@@ -572,7 +491,9 @@ app.post('/api/auth/reset-password', async (req, res) => {
   }
 });
 
-// ========= Kunden =========
+// ========= CUSTOMERS =========
+
+// Liste
 app.get('/api/customers', async (_req, res) => {
   try {
     const result = await pool.query(`
@@ -593,64 +514,10 @@ app.get('/api/customers', async (_req, res) => {
   }
 });
 
-app.post('/api/customers', async (req, res) => {
-  const client = await pool.connect();
-  try {
-    const { firmenname, strasse, hausnummer, ort, plz, telefonnummer, email, ansprechpartner } = req.body;
-    if (!firmenname || !email) return res.status(400).json({ error: 'Firmenname und E-Mail sind Pflichtfelder' });
-
-    await client.query('BEGIN');
-
-    const dupe = await client.query(
-      'SELECT kunden_id FROM customers WHERE LOWER(email)=LOWER($1) OR LOWER(firmenname)=LOWER($2)',
-      [email, firmenname]
-    );
-    if (dupe.rows.length) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Kunde existiert bereits' });
-    }
-
-    const c = await client.query(
-      `INSERT INTO customers (firmenname, strasse, hausnummer, ort, plz, telefonnummer, email)
-       VALUES ($1,$2,$3,$4,$5,$6,LOWER($7))
-       RETURNING *`,
-      [firmenname, strasse, hausnummer, ort, plz, telefonnummer, email]
-    );
-
-    if (ansprechpartner?.name || ansprechpartner?.vorname || ansprechpartner?.email) {
-      await client.query(
-        `INSERT INTO customer_contacts (kunden_id, vorname, name, position, email, telefonnummer)
-         VALUES ($1,$2,$3,$4,LOWER($5),$6)`,
-        [
-          c.rows[0].kunden_id,
-          ansprechpartner?.vorname || null,
-          ansprechpartner?.name || null,
-          ansprechpartner?.position || null,
-          ansprechpartner?.email || email,
-          ansprechpartner?.telefonnummer || telefonnummer || null,
-        ]
-      );
-    }
-
-    await client.query('COMMIT');
-    res.status(201).json({ message: 'Kunde erstellt', kunde: c.rows[0] });
-  } catch (e) {
-    await client.query('ROLLBACK');
-    console.error('Create customer error:', e);
-    res.status(500).json({ error: 'Fehler beim Erstellen des Kunden' });
-  } finally {
-    client.release();
-  }
-});
-
-// ========= Einzelner Kunde =========
-app.get('/api/customers/:id', async (req, res) => {
+// Einzelner Kunde
+app.get('/api/customers/:id(\\d+)', async (req, res) => {
   try {
     const kundenId = Number(req.params.id);
-    if (isNaN(kundenId)) {
-      return res.status(400).json({ error: 'Ungültige Kunden-ID' });
-    }
-
     const result = await pool.query(
       `
       SELECT 
@@ -665,11 +532,7 @@ app.get('/api/customers/:id', async (req, res) => {
       `,
       [kundenId]
     );
-
-    if (!result.rows.length) {
-      return res.status(404).json({ error: 'Kunde nicht gefunden' });
-    }
-
+    if (!result.rows.length) return res.status(404).json({ error: 'Kunde nicht gefunden' });
     res.json(result.rows[0]);
   } catch (e) {
     console.error('GET /api/customers/:id error:', e);
@@ -677,471 +540,221 @@ app.get('/api/customers/:id', async (req, res) => {
   }
 });
 
-// ========= Onboarding-Daten eines Kunden =========
-app.get('/api/onboarding/customer/:kunde_id', async (req, res) => {
-  try {
-    const kundeId = Number(req.params.kunde_id);
-    if (isNaN(kundeId)) {
-      return res.status(400).json({ error: 'Ungültige Kunden-ID' });
-    }
-
-    const result = await pool.query(
-      `SELECT * FROM onboarding WHERE kunde_id = $1 ORDER BY created_at DESC`,
-      [kundeId]
-    );
-
-    if (!result.rows.length) {
-      return res.status(404).json({ error: 'Keine Onboarding-Daten für diesen Kunden gefunden' });
-    }
-
-    res.json(result.rows);
-  } catch (e) {
-    console.error('GET /api/onboarding/customer/:kunde_id error:', e);
-    res.status(500).json({ error: 'Fehler beim Abrufen der Onboarding-Daten' });
-  }
-});
-
-
-// ========= Kalkulationen =========
-app.get('/api/kalkulationen', async (_req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT 
-        k.kalkulations_id,
-        k.datum,
-        k.status,
-        k.stundensatz::float8 AS stundensatz,
-        k.gesamtzeit::float8  AS gesamtzeit,
-        k.gesamtpreis::float8 AS gesamtpreis,
-        k.mwst_prozent::float8 AS mwst_prozent,
-        c.firmenname          AS kunde_name
-      FROM kalkulationen k
-      LEFT JOIN customers c ON c.kunden_id = k.kunden_id
-      ORDER BY k.datum DESC
-      LIMIT 10
-    `);
-    res.json(result.rows);
-  } catch (e) {
-    console.error('GET /api/kalkulationen error:', e);
-    res.status(500).json({ error: 'Fehler beim Abrufen der Kalkulationen' });
-  }
-});
-
-app.post('/api/kalkulationen', async (req, res) => {
+// Kunde anlegen (+ optionale komplette Infrastruktur – Option B)
+app.post('/api/customers', async (req, res) => {
   const client = await pool.connect();
   try {
-    const { kunde_id, stundensatz, dienstleistungen, mwst_prozent } = req.body;
-    if (!kunde_id || stundensatz === undefined || !Array.isArray(dienstleistungen)) {
-      return res.status(400).json({ error: 'kunde_id, stundensatz und dienstleistungen sind erforderlich' });
-    }
+    const {
+      firmenname, strasse, hausnummer, ort, plz, telefonnummer, email, ansprechpartner,
+      infrastructure_data // optional
+    } = req.body;
 
-    let gesamtzeit = 0;
-    let gesamtpreis = 0;
-    for (const d of dienstleistungen) {
-      const dauer = Number(d?.dauer_pro_einheit) || 0;
-      const anzahl = Number(d?.anzahl) || 1;
-      const stunden = dauer * anzahl;
-      const satz =
-        d?.stundensatz === '' || d?.stundensatz === undefined || d?.stundensatz === null
-          ? Number(stundensatz) || 0
-          : Number(d.stundensatz) || 0;
-      gesamtzeit += stunden;
-      gesamtpreis += stunden * satz;
+    if (!firmenname || !email) {
+      return res.status(400).json({ error: 'Firmenname und E-Mail sind Pflichtfelder' });
     }
 
     await client.query('BEGIN');
 
-    const k = await client.query(
-      `INSERT INTO kalkulationen (kunden_id, datum, stundensatz, mwst_prozent, gesamtzeit, gesamtpreis, status)
-       VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, 'neu')
-       RETURNING kalkulations_id, datum, stundensatz::float8 AS stundensatz, mwst_prozent::float8 AS mwst_prozent,
-                 gesamtzeit::float8 AS gesamtzeit, gesamtpreis::float8 AS gesamtpreis, status`,
-      [kunde_id, Number(stundensatz) || 0, mwst_prozent === undefined ? 19 : Number(mwst_prozent), gesamtzeit, gesamtpreis]
+    // Duplikatcheck
+    const dupe = await client.query(
+      'SELECT kunden_id FROM customers WHERE LOWER(email)=LOWER($1) OR LOWER(firmenname)=LOWER($2)',
+      [email, firmenname]
     );
-
-    const kalkulationsId = k.rows[0].kalkulations_id;
-
-    for (const d of dienstleistungen) {
-      await client.query(
-        `INSERT INTO kalkulation_positionen
-           (kalkulations_id, section, beschreibung, anzahl, dauer_pro_einheit, stundensatz, info)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [
-          kalkulationsId,
-          d.section || null,
-          d.beschreibung || '',
-          toNumberOrNull(d.anzahl) ?? 1,
-          toNumberOrNull(d.dauer_pro_einheit) ?? 0,
-          d.stundensatz === '' || d.stundensatz === undefined || d.stundensatz === null ? null : Number(d.stundensatz),
-          d.info || null,
-        ]
-      );
+    if (dupe.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Kunde existiert bereits' });
     }
 
-    await client.query('COMMIT');
-    res.status(201).json({ message: 'Kalkulation gespeichert', kalkulation: k.rows[0] });
-  } catch (e) {
-    await client.query('ROLLBACK');
-    console.error('POST /api/kalkulationen error:', e);
-    res.status(500).json({ error: 'Fehler beim Erstellen der Kalkulation: ' + e.message });
-  } finally {
-    client.release();
-  }
-});
-
-app.get('/api/kalkulationen/stats', async (_req, res) => {
-  try {
-    const [kundenCount, aktiveOnb, totalStunden, runningProjects] = await Promise.all([
-      // Anzahl Kunden
-      pool.query('SELECT COUNT(*) FROM customers'),
-      
-      // Anzahl laufende Onboardings (als Projekte zählen)
-      pool.query('SELECT COUNT(*) FROM onboarding'),
-      
-      // Gesamtstunden aus allen Kalkulationen
-      pool.query(`
-        SELECT COALESCE(SUM(gesamtzeit),0)::float8 AS total_hours
-          FROM kalkulationen
-      `),
-      
-      // Laufende Projekte (Kalkulationen mit Status 'neu' oder 'in Arbeit')
-pool.query(`
-  SELECT COUNT(*)::int AS running_projects
-    FROM kalkulationen
-   WHERE status IN ('neu', 'in Arbeit')
-`)
-    ]);
-
-    res.json({
-      activeCustomers: Number(kundenCount.rows[0].count || 0),
-      runningProjects: Number(runningProjects.rows[0].running_projects || aktiveOnb.rows[0].count || 0), // Fallback auf Onboardings
-      totalHours: Number(totalStunden.rows[0].total_hours || 0),
-    });
-  } catch (e) {
-    console.error('GET /api/kalkulationen/stats error:', e);
-    res.status(500).json({ error: 'Fehler beim Abrufen der Statistiken' });
-  }
-});
-
-// ========= Onboarding =========
-
-// Hilfsfunktion: vollständige Onboarding-Daten für E-Mail/Export
-async function getFullOnboardingData(onboardingId) {
-  // Hauptdaten (Achtung: onboarding.kunde_id!)
-  const mainQuery = await pool.query(
-    `
-    SELECT 
-      o.*,
-      c.firmenname, c.email as kunde_email, c.strasse, c.hausnummer, 
-      c.plz, c.ort, c.telefonnummer as kunde_telefon,
-      cc.vorname as ansprechpartner_vorname, cc.name as ansprechpartner_name,
-      cc.position, cc.email as ansprechpartner_email, cc.telefonnummer as ansprechpartner_telefon
-    FROM onboarding o
-    LEFT JOIN customers c     ON o.kunde_id = c.kunden_id
-    LEFT JOIN customer_contacts cc ON c.kunden_id = cc.kunden_id
-    WHERE o.onboarding_id = $1
-    `,
-    [onboardingId]
-  );
-  if (!mainQuery.rows.length) throw new Error('Onboarding nicht gefunden');
-  const main = mainQuery.rows[0];
-
-  const netzwerk = await pool.query('SELECT * FROM onboarding_network WHERE onboarding_id=$1', [onboardingId]);
-  const hardware = await pool.query('SELECT * FROM onboarding_hardware WHERE onboarding_id=$1', [onboardingId]);
-  const mail = await pool.query('SELECT * FROM onboarding_mail WHERE onboarding_id=$1', [onboardingId]);
-
-  const sw = await pool.query('SELECT * FROM onboarding_software WHERE onboarding_id=$1', [onboardingId]);
-  let softwareData = null;
-  if (sw.rows.length) {
-    const swId = sw.rows[0].software_id;
-    const reqs = await pool.query(
-      'SELECT type, detail FROM onboarding_software_requirements WHERE software_id=$1',
-      [swId]
+    // Kunde
+    const c = await client.query(
+      `INSERT INTO customers (firmenname, strasse, hausnummer, ort, plz, telefonnummer, email)
+       VALUES ($1,$2,$3,$4,$5,$6,LOWER($7))
+       RETURNING *`,
+      [firmenname, strasse, hausnummer, ort, plz, telefonnummer, email]
     );
-    const apps = await pool.query('SELECT name FROM onboarding_software_apps WHERE software_id=$1', [swId]);
-    softwareData = { ...sw.rows[0], requirements: reqs.rows, apps: apps.rows.map(a => a.name) };
-  }
+    const kundenId = c.rows[0].kunden_id;
 
-  const backup = await pool.query('SELECT * FROM onboarding_backup WHERE onboarding_id=$1', [onboardingId]);
-  const sonstiges = await pool.query('SELECT * FROM onboarding_sonstiges WHERE onboarding_id=$1', [onboardingId]);
-
-  return {
-    onboarding_info: { id: main.onboarding_id, datum: main.created_at, bearbeiter: 'System' },
-    kunde: {
-      firmenname: main.firmenname,
-      adresse: { strasse: main.strasse, hausnummer: main.hausnummer, plz: main.plz, ort: main.ort },
-      kontakt: { email: main.kunde_email, telefon: main.kunde_telefon },
-      ansprechpartner: {
-        name: `${main.ansprechpartner_vorname || ''} ${main.ansprechpartner_name || ''}`.trim(),
-        position: main.position,
-        email: main.ansprechpartner_email,
-        telefon: main.ansprechpartner_telefon,
-      },
-    },
-    it_infrastruktur: {
-      netzwerk: netzwerk.rows[0] || null,
-      hardware: hardware.rows || [],
-      mail: mail.rows[0] || null,
-      software: softwareData,
-      backup: backup.rows[0] || null,
-      sonstiges: sonstiges.rows.map(s => s.text) || [],
-    },
-    export_datum: new Date().toISOString(),
-  };
-}
-
-app.post('/api/onboarding', async (req, res) => {
-  const client = await pool.connect();
-  try {
-    const { kunde_id, infrastructure_data } = req.body;
-    if (!kunde_id || !infrastructure_data) {
-      return res.status(400).json({ error: 'kunde_id und infrastructure_data sind erforderlich' });
-    }
-
-    await client.query('BEGIN');
-
-    // ACHTUNG: Spalte heißt kunde_id (nicht kunden_id)
-    const ob = await client.query(
-      `INSERT INTO onboarding (kunde_id) VALUES ($1) RETURNING onboarding_id`,
-      [kunde_id]
-    );
-    const onboardingId = ob.rows[0].onboarding_id;
-
-    if (infrastructure_data.netzwerk) {
-      const n = infrastructure_data.netzwerk;
+    // Ansprechpartner (optional)
+    if (ansprechpartner?.name || ansprechpartner?.vorname || ansprechpartner?.email) {
       await client.query(
-        `INSERT INTO onboarding_network
-           (onboarding_id, internetzugangsart, firewall_modell, feste_ip_vorhanden,
-            ip_adresse, vpn_einwahl_erforderlich, aktuelle_vpn_user, geplante_vpn_user, informationen)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        `INSERT INTO customer_contacts (kunden_id, vorname, name, position, email, telefonnummer)
+         VALUES ($1,$2,$3,$4,LOWER($5),$6)`,
         [
-          onboardingId,
-          n.internetzugangsart || null,
-          n.firewall_modell || null,
-          !!n.feste_ip_vorhanden,
-          n.ip_adresse || null,
-          !!n.vpn_einwahl_erforderlich,
-          toNumberOrNull(n.aktuelle_vpn_user),
-          toNumberOrNull(n.geplante_vpn_user),
-          n.informationen || null,
+          kundenId,
+          ansprechpartner?.vorname || null,
+          ansprechpartner?.name || null,
+          ansprechpartner?.position || null,
+          ansprechpartner?.email || email,
+          ansprechpartner?.telefonnummer || telefonnummer || null,
         ]
       );
     }
 
-    const hwList = Array.isArray(infrastructure_data.hardware?.hardwareList)
-      ? infrastructure_data.hardware.hardwareList
-      : (infrastructure_data.hardware &&
-          (infrastructure_data.hardware.typ ||
-            infrastructure_data.hardware.hersteller ||
-            infrastructure_data.hardware.modell ||
-            infrastructure_data.hardware.seriennummer ||
-            infrastructure_data.hardware.standort ||
-            infrastructure_data.hardware.ip ||
-            (infrastructure_data.hardware.details_jsonb &&
-              Object.keys(infrastructure_data.hardware.details_jsonb).length) ||
-            infrastructure_data.hardware.informationen))
-      ? [infrastructure_data.hardware]
-      : [];
+    // Infrastruktur (optional)
+    if (infrastructure_data) {
+      const { netzwerk, hardware, software, mail, backup, sonstiges } = infrastructure_data;
 
-    for (const hw of hwList) {
-      await client.query(
-        `INSERT INTO onboarding_hardware
-           (onboarding_id, typ, hersteller, modell, seriennummer, standort, ip, details_jsonb, informationen)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [
-          onboardingId,
-          hw.typ || null,
-          hw.hersteller || null,
-          hw.modell || null,
-          hw.seriennummer || null,
-          hw.standort || null,
-          hw.ip || null,
-          JSON.stringify(normalizeJSONB(hw.details_jsonb)),
-          hw.informationen || null,
-        ]
+      // Onboarding-Header
+      const ob = await client.query(
+        `INSERT INTO onboarding (kunde_id) VALUES ($1) RETURNING onboarding_id`,
+        [kundenId]
       );
-    }
+      const onboardingId = ob.rows[0].onboarding_id;
 
-    if (infrastructure_data.mail) {
-      const m = infrastructure_data.mail;
-      await client.query(
-        `INSERT INTO onboarding_mail
-           (onboarding_id, anbieter, anzahl_postfach, anzahl_shared, gesamt_speicher,
-            pop3_connector, mobiler_zugriff, informationen)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [
-          onboardingId,
-          m.anbieter || null,
-          toNumberOrNull(m.anzahl_postfach),
-          toNumberOrNull(m.anzahl_shared),
-          toNumberOrNull(m.gesamt_speicher),
-          !!m.pop3_connector,
-          !!m.mobiler_zugriff,
-          m.informationen || null,
-        ]
-      );
-    }
+      // Netzwerk (1:1)
+      if (netzwerk && Object.keys(netzwerk).length) {
+        const n = netzwerk;
+        await client.query(
+          `INSERT INTO onboarding_network
+             (onboarding_id, internetzugangsart, firewall_modell, feste_ip_vorhanden,
+              ip_adresse, vpn_einwahl_erforderlich, aktuelle_vpn_user, geplante_vpn_user, informationen)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [
+            onboardingId,
+            n.internetzugangsart || null,
+            n.firewall_modell || null,
+            !!n.feste_ip_vorhanden,
+            n.ip_adresse || null,
+            !!n.vpn_einwahl_erforderlich,
+            toNumberOrNull(n.aktuelle_vpn_user),
+            toNumberOrNull(n.geplante_vpn_user),
+            n.informationen || null,
+          ]
+        );
+      }
 
-    if (infrastructure_data.software) {
-      const s = infrastructure_data.software;
-      const sw = await client.query(
-        `INSERT INTO onboarding_software
-           (onboarding_id, name, licenses, critical, description, virenschutz, schnittstellen,
-            wartungsvertrag, migration_support, verwendete_applikationen_text)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-         RETURNING software_id`,
-        [
-          onboardingId,
-          s.name || null,
-          toNumberOrNull(s.licenses),
-          s.critical || null,
-          s.description || null,
-          s.virenschutz || null,
-          s.schnittstellen || null,
-          s.wartungsvertrag === true,
-          s.migration_support === true,
-          s.verwendete_applikationen_text || null,
-        ]
-      );
-      const softwareId = sw.rows[0].software_id;
+      // Hardware (Liste oder Einzelobjekt)
+      const hwList = Array.isArray(hardware?.hardwareList)
+        ? hardware.hardwareList
+        : (hardware && (
+            hardware.typ || hardware.hersteller || hardware.modell || hardware.seriennummer ||
+            hardware.standort || hardware.ip || (hardware.details_jsonb && Object.keys(hardware.details_jsonb).length) ||
+            hardware.informationen
+          )) ? [hardware] : [];
 
-      if (Array.isArray(s.requirements)) {
-        for (const r of s.requirements) {
+      for (const hw of hwList) {
+        await client.query(
+          `INSERT INTO onboarding_hardware
+             (onboarding_id, typ, hersteller, modell, seriennummer, standort, ip, details_jsonb, informationen)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [
+            onboardingId,
+            hw.typ || null,
+            hw.hersteller || null,
+            hw.modell || null,
+            hw.seriennummer || null,
+            hw.standort || null,
+            hw.ip || null,
+            JSON.stringify(normalizeJSONB(hw.details_jsonb)),
+            hw.informationen || null,
+          ]
+        );
+      }
+
+      // Mail (1:1)
+      if (mail && Object.keys(mail).length) {
+        const m = mail;
+        await client.query(
+          `INSERT INTO onboarding_mail
+             (onboarding_id, anbieter, anzahl_postfach, anzahl_shared, gesamt_speicher,
+              pop3_connector, mobiler_zugriff, informationen)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [
+            onboardingId,
+            m.anbieter || null,
+            toNumberOrNull(m.anzahl_postfach),
+            toNumberOrNull(m.anzahl_shared),
+            toNumberOrNull(m.gesamt_speicher),
+            !!m.pop3_connector,
+            !!m.mobiler_zugriff,
+            m.informationen || null,
+          ]
+        );
+      }
+
+      // Software (+ Requirements + Apps)
+      if (software && Object.keys(software).length) {
+        const s = software;
+        const sw = await client.query(
+          `INSERT INTO onboarding_software
+             (onboarding_id, name, licenses, critical, description, virenschutz, schnittstellen,
+              wartungsvertrag, migration_support, verwendete_applikationen_text)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+           RETURNING software_id`,
+          [
+            onboardingId,
+            s.name || null,
+            toNumberOrNull(s.licenses),
+            s.critical || null,
+            s.description || null,
+            s.virenschutz || null,
+            s.schnittstellen || null,
+            s.wartungsvertrag === true,
+            s.migration_support === true,
+            s.verwendete_applikationen_text || null,
+          ]
+        );
+        const softwareId = sw.rows[0].software_id;
+
+        if (Array.isArray(s.requirements)) {
+          for (const r of s.requirements) {
+            await client.query(
+              `INSERT INTO onboarding_software_requirements (software_id, type, detail)
+               VALUES ($1,$2,$3)`,
+              [softwareId, r?.type || null, r?.detail || null]
+            );
+          }
+        }
+
+        const apps =
+          Array.isArray(s.verwendete_applikationen) && s.verwendete_applikationen.length
+            ? s.verwendete_applikationen
+            : (s.verwendete_applikationen_text || '')
+                .split('\n')
+                .map((x) => x.trim())
+                .filter(Boolean);
+
+        for (const appName of apps) {
           await client.query(
-            `INSERT INTO onboarding_software_requirements (software_id, type, detail)
-             VALUES ($1,$2,$3)`,
-            [softwareId, r?.type || null, r?.detail || null]
+            `INSERT INTO onboarding_software_apps (software_id, name) VALUES ($1,$2)`,
+            [softwareId, appName]
           );
         }
       }
 
-      const apps =
-        Array.isArray(s.verwendete_applikationen) && s.verwendete_applikationen.length
-          ? s.verwendete_applikationen
-          : (s.verwendete_applikationen_text || '')
-              .split('\n')
-              .map((x) => x.trim())
-              .filter(Boolean);
+      // Backup (1:1)
+      if (backup && Object.keys(backup).length) {
+        const b = backup;
+        await client.query(
+          `INSERT INTO onboarding_backup
+             (onboarding_id, tool, interval, retention, location, size, info)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+          [onboardingId, b.tool || null, b.interval || null, b.retention || null, b.location || null, toNumberOrNull(b.size), b.info || null]
+        );
+      }
 
-      for (const appName of apps) {
-        await client.query(`INSERT INTO onboarding_software_apps (software_id, name) VALUES ($1,$2)`, [
-          softwareId,
-          appName,
-        ]);
+      // Sonstiges (1:1)
+      if (sonstiges?.text) {
+        await client.query(
+          `INSERT INTO onboarding_sonstiges (onboarding_id, text) VALUES ($1,$2)`,
+          [onboardingId, sonstiges.text]
+        );
       }
     }
 
-    if (infrastructure_data.backup) {
-      const b = infrastructure_data.backup;
-      await client.query(
-        `INSERT INTO onboarding_backup
-           (onboarding_id, tool, interval, retention, location, size, info)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [onboardingId, b.tool || null, b.interval || null, b.retention || null, b.location || null, toNumberOrNull(b.size), b.info || null]
-      );
-    }
-
-    if (infrastructure_data.sonstiges?.text) {
-      await client.query(`INSERT INTO onboarding_sonstiges (onboarding_id, text) VALUES ($1,$2)`, [
-        onboardingId,
-        infrastructure_data.sonstiges.text,
-      ]);
-    }
-
     await client.query('COMMIT');
-
-    res.status(201).json({ message: 'Onboarding gespeichert', onboarding_id: onboardingId });
+    res.status(201).json({ message: 'Kunde wurde angelegt.', kunde: c.rows[0] });
   } catch (e) {
-    await pool.query('ROLLBACK');
-    console.error('❌ Onboarding Error:', e);
-    res.status(500).json({ error: 'Fehler beim Speichern des Onboardings: ' + e.message });
+    await client.query('ROLLBACK');
+    console.error('Create customer (with infra) error:', e);
+    res.status(500).json({ error: 'Fehler beim Erstellen des Kunden/Onboardings: ' + e.message });
   } finally {
     client.release();
   }
 });
 
-// ========= Onboarding-Details laden =========
-app.patch('/api/onboarding/:id', async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    if (!id) return res.status(400).json({ error: 'Ungültige Onboarding-ID' });
-
-    let { status, datum, mitarbeiter_id, infrastructure_data } = req.body;
-
-    // Legacy-Mapping
-    if (status === 'offen') status = 'neu';
-
-    const ALLOWED = ['neu', 'in Arbeit', 'erledigt'];
-    if (status && !ALLOWED.includes(status)) {
-      return res.status(400).json({ error: `Status muss einer von ${ALLOWED.join(', ')} sein` });
-    }
-    if (datum && !/^\d{4}-\d{2}-\d{2}$/.test(datum)) {
-      return res.status(400).json({ error: 'Datum muss YYYY-MM-DD sein' });
-    }
-
-    // Mitarbeiter-ID normalisieren
-    if (mitarbeiter_id !== undefined) {
-      if (mitarbeiter_id === '' || mitarbeiter_id === null) mitarbeiter_id = null;
-      else {
-        const n = Number(mitarbeiter_id);
-        if (Number.isNaN(n)) return res.status(400).json({ error: 'mitarbeiter_id ungültig' });
-        mitarbeiter_id = n;
-      }
-    } else {
-      mitarbeiter_id = undefined; // nicht ändern
-    }
-
-    // infrastructure_data optional
-    if (infrastructure_data !== undefined && typeof infrastructure_data !== 'object') {
-      try { infrastructure_data = JSON.parse(infrastructure_data); } catch {
-        return res.status(400).json({ error: 'infrastructure_data muss JSON sein' });
-      }
-    }
-
-    const q = await pool.query(`
-      UPDATE onboarding
-         SET status             = COALESCE($1, status),
-             datum              = COALESCE($2::date, datum),
-             mitarbeiter_id     = CASE WHEN $3 IS NULL THEN NULL ELSE COALESCE($3, mitarbeiter_id) END,
-             infrastructure_data= COALESCE($4::jsonb, infrastructure_data),
-             updated_at         = NOW()
-       WHERE onboarding_id=$5
-       RETURNING onboarding_id, kunde_id, status, datum, mitarbeiter_id, infrastructure_data, created_at, updated_at
-    `, [
-      status ?? null,
-      datum ?? null,
-      (mitarbeiter_id === undefined ? null : mitarbeiter_id), // NULL = explizit auf NULL, undefined = nicht ändern
-      (infrastructure_data === undefined ? null : JSON.stringify(infrastructure_data)),
-      id
-    ]);
-
-    if (!q.rows.length) return res.status(404).json({ error: 'Onboarding nicht gefunden' });
-    res.json(q.rows[0]);
-  } catch (e) {
-    console.error('PATCH /api/onboarding/:id error:', e);
-    res.status(500).json({ error: 'Fehler beim Aktualisieren des Onboardings' });
-  }
-});
-
-
-app.get('/api/onboarding/:id/export', async (req, res) => {
-  try {
-    const onboardingId = Number(req.params.id);
-    const data = await getFullOnboardingData(onboardingId);
-    const fileName = `onboarding_${data.kunde.firmenname.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date()
-      .toISOString()
-      .split('T')[0]}.json`;
-
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-    res.send(JSON.stringify(data, null, 2));
-  } catch (e) {
-    console.error('Export Fehler:', e);
-    res.status(500).json({ error: `Fehler beim Export: ${e.message}` });
-  }
-});
-
-// ========= Projekte (Onboarding mit erweiterten Infos) =========
+// ========= ONBOARDING =========
+// --- Onboarding-Projekte (Liste)
 app.get('/api/onboarding/projects', async (_req, res) => {
   try {
     const result = await pool.query(`
@@ -1152,100 +765,638 @@ app.get('/api/onboarding/projects', async (_req, res) => {
         o.created_at,
         o.updated_at,
         c.firmenname,
-        
-        -- Netzwerk-Info
-        CASE WHEN n.onboarding_id IS NOT NULL THEN true ELSE false END as has_network,
-        
-        -- Hardware-Count
-        COUNT(DISTINCT h.hardware_id) as hardware_count,
-        
-        -- Software-Count  
-        COUNT(DISTINCT s.software_id) as software_count,
-        
-        -- Mail-Info
-        CASE WHEN m.onboarding_id IS NOT NULL THEN true ELSE false END as has_mail,
-        
-        -- Backup-Info
-        CASE WHEN b.onboarding_id IS NOT NULL THEN true ELSE false END as has_backup
-        
+        c.email,
+        c.plz,
+        c.ort,
+        COUNT(DISTINCT oh.hardware_id)::int AS hardware_count,
+        COUNT(DISTINCT os.software_id)::int AS software_count,
+        COUNT(DISTINCT onw.network_id)::int AS network_count,
+        COUNT(DISTINCT om.mail_id)::int     AS mail_count,
+        COUNT(DISTINCT ob.backup_id)::int   AS backup_count,
+        (COUNT(onw.network_id) > 0)         AS has_network
       FROM onboarding o
-      LEFT JOIN customers c ON o.kunde_id = c.kunden_id
-      LEFT JOIN onboarding_network n ON o.onboarding_id = n.onboarding_id
-      LEFT JOIN onboarding_hardware h ON o.onboarding_id = h.onboarding_id
-      LEFT JOIN onboarding_software s ON o.onboarding_id = s.onboarding_id
-      LEFT JOIN onboarding_mail m ON o.onboarding_id = m.onboarding_id
-      LEFT JOIN onboarding_backup b ON o.onboarding_id = b.onboarding_id
-      
-      GROUP BY 
-        o.onboarding_id, o.kunde_id, o.status, o.created_at, o.updated_at,
-        c.firmenname, n.onboarding_id, m.onboarding_id, b.onboarding_id
-      ORDER BY o.created_at DESC
+      LEFT JOIN customers            c   ON c.kunden_id      = o.kunde_id
+      LEFT JOIN onboarding_hardware  oh  ON oh.onboarding_id = o.onboarding_id
+      LEFT JOIN onboarding_software  os  ON os.onboarding_id = o.onboarding_id
+      LEFT JOIN onboarding_network   onw ON onw.onboarding_id= o.onboarding_id
+      LEFT JOIN onboarding_mail      om  ON om.onboarding_id = o.onboarding_id
+      LEFT JOIN onboarding_backup    ob  ON ob.onboarding_id = o.onboarding_id
+      GROUP BY o.onboarding_id, c.firmenname, c.email, c.plz, c.ort
+      ORDER BY o.onboarding_id DESC
     `);
-    
     res.json(result.rows);
-  } catch (error) {
-    console.error('GET /api/onboarding/projects error:', error);
-    res.status(500).json({ error: 'Fehler beim Abrufen der Projekte' });
+  } catch (e) {
+    console.error('Onboarding projects error:', e);
+    res.status(500).json({ error: 'Fehler beim Abrufen der Onboarding-Projekte' });
   }
 });
 
-// ========= Projekt-Status aktualisieren =========
-app.patch('/api/onboarding/:id/status', async (req, res) => {
+// Onboarding(s) eines Kunden
+app.get('/api/onboarding/customer/:kunde_id(\\d+)', async (req, res) => {
   try {
-    const onboardingId = Number(req.params.id);
-    let { status } = req.body;
+    const kundeId = Number(req.params.kunde_id);
+    const { rows } = await pool.query(
+      `SELECT onboarding_id, kunde_id, status, datum, created_at, updated_at
+         FROM onboarding
+        WHERE kunde_id = $1
+        ORDER BY created_at DESC`,
+      [kundeId]
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error('GET /api/onboarding/customer/:kunde_id error:', e);
+    res.status(500).json({ error: 'Fehler beim Abrufen der Onboardings des Kunden' });
+  }
+});
 
-    if (!onboardingId) return res.status(400).json({ error: 'Ungültige Onboarding-ID' });
+// Einzelnes Onboarding inkl. Unterdaten
+app.get('/api/onboarding/:id(\\d+)', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const id = Number(req.params.id);
+    const ob = await client.query(
+      `SELECT onboarding_id, kunde_id, status, datum, mitarbeiter_id, infrastructure_data,
+              created_at, updated_at
+         FROM onboarding
+        WHERE onboarding_id = $1`,
+      [id]
+    );
+    if (!ob.rows.length) return res.status(404).json({ error: 'Onboarding nicht gefunden' });
 
-    // Legacy-Mapping: "offen" => "neu"
-    if (status === 'offen') status = 'neu';
+    const [netz, hw, sw, mail, backup, sonst] = await Promise.all([
+      client.query(`SELECT * FROM onboarding_network WHERE onboarding_id=$1 LIMIT 1`, [id]),
+      client.query(`SELECT * FROM onboarding_hardware WHERE onboarding_id=$1 ORDER BY hardware_id`, [id]),
+      client.query(`
+        SELECT s.*,
+               COALESCE((
+                 SELECT json_agg(json_build_object('type', r.type, 'detail', r.detail) ORDER BY r.requirement_id)
+                 FROM onboarding_software_requirements r WHERE r.software_id = s.software_id
+               ), '[]'::json) AS requirements,
+               COALESCE((
+                 SELECT json_agg(json_build_object('name', a.name) ORDER BY a.app_id)
+                 FROM onboarding_software_apps a WHERE a.software_id = s.software_id
+               ), '[]'::json) AS apps
+          FROM onboarding_software s
+         WHERE s.onboarding_id = $1
+         ORDER BY s.software_id
+      `, [id]),
+      client.query(`SELECT * FROM onboarding_mail     WHERE onboarding_id=$1 LIMIT 1`, [id]),
+      client.query(`SELECT * FROM onboarding_backup   WHERE onboarding_id=$1 LIMIT 1`, [id]),
+      client.query(`SELECT * FROM onboarding_sonstiges WHERE onboarding_id=$1 LIMIT 1`, [id]),
+    ]);
 
-    const ALLOWED = ['neu', 'in Arbeit', 'erledigt'];
-    if (!status || !ALLOWED.includes(status)) {
-      return res.status(400).json({ error: `Status muss einer von ${ALLOWED.join(', ')} sein` });
+    res.json({
+      ...ob.rows[0],
+      netzwerk: netz.rows[0] || null,
+      hardware: hw.rows || [],
+      software: sw.rows || [],
+      mail: mail.rows[0] || null,
+      backup: backup.rows[0] || null,
+      sonstiges: sonst.rows[0] || null,
+    });
+  } catch (e) {
+    console.error('GET /api/onboarding/:id error:', e);
+    res.status(500).json({ error: 'Fehler beim Laden des Onboardings' });
+  } finally {
+    client.release();
+  }
+});
+
+// Neues Onboarding (für bestehenden Kunden) – Payload flach ODER unter infrastructure_data
+app.post('/api/onboarding', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { kunde_id } = req.body;
+    if (!kunde_id) return res.status(400).json({ error: 'kunde_id ist erforderlich' });
+
+    const payload = req.body.infrastructure_data ?? req.body;
+    const { netzwerk, hardware, software, mail, backup, sonstiges } = payload;
+
+    await client.query('BEGIN');
+
+    const { rows: [ob] } = await client.query(
+      'INSERT INTO onboarding (kunde_id, status) VALUES ($1,$2) RETURNING onboarding_id, created_at',
+      [kunde_id, 'neu']
+    );
+    const onboardingId = ob.onboarding_id;
+
+    // Netzwerk
+    if (netzwerk && Object.keys(netzwerk).length) {
+      await client.query(`
+        INSERT INTO onboarding_network (
+          onboarding_id, internetzugangsart, firewall_modell, feste_ip_vorhanden,
+          ip_adresse, vpn_einwahl_erforderlich, aktuelle_vpn_user, geplante_vpn_user, informationen
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      `, [
+        onboardingId,
+        netzwerk.internetzugangsart ?? null,
+        netzwerk.firewall_modell ?? null,
+        toBool(netzwerk.feste_ip_vorhanden),
+        netzwerk.ip_adresse ?? null,
+        toBool(netzwerk.vpn_einwahl_erforderlich),
+        toNumberOrNull(netzwerk.aktuelle_vpn_user),
+        toNumberOrNull(netzwerk.geplante_vpn_user),
+        netzwerk.informationen ?? null,
+      ]);
     }
 
-    const exists = await pool.query('SELECT 1 FROM onboarding WHERE onboarding_id=$1', [onboardingId]);
-    if (!exists.rows.length) return res.status(404).json({ error: 'Onboarding nicht gefunden' });
+    // Hardware
+    const hwList = Array.isArray(hardware) ? hardware
+                : Array.isArray(hardware?.hardwareList) ? hardware.hardwareList
+                : (hardware && Object.keys(hardware).length ? [hardware] : []);
+    for (const hw of hwList) {
+      await client.query(`
+        INSERT INTO onboarding_hardware (
+          onboarding_id, typ, hersteller, modell, seriennummer, standort, ip, details_jsonb, informationen
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      `, [
+        onboardingId,
+        hw.typ ?? null,
+        hw.hersteller ?? null,
+        hw.modell ?? null,
+        hw.seriennummer ?? null,
+        hw.standort ?? null,
+        hw.ip ?? null,
+        JSON.stringify(normalizeJSONB(hw.details_jsonb ?? hw.details)),
+        hw.informationen ?? null,
+      ]);
+    }
 
-    const result = await pool.query(
-      'UPDATE onboarding SET status=$1, updated_at=NOW() WHERE onboarding_id=$2 RETURNING *',
-      [status, onboardingId]
+    // Software (+ Requirements + Apps)
+    const swList = Array.isArray(software) ? software
+                : Array.isArray(software?.softwareList) ? software.softwareList
+                : (software && Object.keys(software).length ? [software] : []);
+    for (const sw of swList) {
+      const { rows: [srow] } = await client.query(`
+        INSERT INTO onboarding_software (
+          onboarding_id, name, licenses, critical, description, virenschutz, schnittstellen,
+          wartungsvertrag, migration_support, verwendete_applikationen_text
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING software_id
+      `, [
+        onboardingId,
+        sw.name ?? null,
+        toNumberOrNull(sw.licenses),
+        sw.critical ?? null,
+        sw.description ?? null,
+        sw.virenschutz ?? null,
+        sw.schnittstellen ?? null,
+        toBool(sw.wartungsvertrag),
+        toBool(sw.migration_support),
+        sw.verwendete_applikationen_text ?? null,
+      ]);
+      const softwareId = srow.software_id;
+
+      const reqs = Array.isArray(sw.requirements) ? sw.requirements : [];
+      for (const r of reqs) {
+        await client.query(
+          `INSERT INTO onboarding_software_requirements (software_id, type, detail) VALUES ($1,$2,$3)`,
+          [softwareId, r.type ?? null, r.detail ?? null]
+        );
+      }
+
+      const apps = Array.isArray(sw.apps) ? sw.apps : [];
+      for (const a of apps) {
+        await client.query(
+          `INSERT INTO onboarding_software_apps (software_id, name) VALUES ($1,$2)`,
+          [softwareId, a.name ?? a]
+        );
+      }
+    }
+
+    // Mail
+    if (mail && Object.keys(mail).length) {
+      await client.query(`
+        INSERT INTO onboarding_mail (
+          onboarding_id, anbieter, anzahl_postfach, anzahl_shared, gesamt_speicher,
+          pop3_connector, mobiler_zugriff, informationen
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      `, [
+        onboardingId,
+        mail.anbieter ?? null,
+        toNumberOrNull(mail.anzahl_postfach),
+        toNumberOrNull(mail.anzahl_shared),
+        toNumberOrNull(mail.gesamt_speicher),
+        toBool(mail.pop3_connector),
+        toBool(mail.mobiler_zugriff),
+        mail.informationen ?? null,
+      ]);
+    }
+
+    // Backup
+    if (backup && Object.keys(backup).length) {
+      await client.query(`
+        INSERT INTO onboarding_backup (
+          onboarding_id, tool, interval, retention, location, size, info
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+      `, [
+        onboardingId,
+        backup.tool ?? null,
+        backup.interval ?? null,
+        backup.retention ?? null,
+        backup.location ?? null,
+        toNumberOrNull(backup.size),
+        backup.info ?? null,
+      ]);
+    }
+
+    // Sonstiges
+    if (sonstiges && (sonstiges.text || sonstiges.informationen)) {
+      await client.query(`
+        INSERT INTO onboarding_sonstiges (onboarding_id, text) VALUES ($1,$2)
+      `, [onboardingId, (sonstiges.text ?? sonstiges.informationen) || null]);
+    }
+
+    await client.query('COMMIT');
+    res.status(201).json({ message: 'Onboarding angelegt', onboarding_id: onboardingId });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error('Create onboarding error:', e);
+    res.status(500).json({ error: 'Fehler beim Anlegen des Onboardings' });
+  } finally {
+    client.release();
+  }
+});
+
+// Bearbeiten (Upsert) – Payload flach ODER unter infrastructure_data
+app.patch('/api/onboarding/:id(\\d+)', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const id = Number(req.params.id);
+    const root = req.body.infrastructure_data ?? req.body;
+    const { status, netzwerk, hardware, software, mail, backup, sonstiges } = root;
+
+    await client.query('BEGIN');
+
+    if (status) {
+      await client.query(`UPDATE onboarding SET status=$1, updated_at=NOW() WHERE onboarding_id=$2`, [status, id]);
+    }
+
+    // Netzwerk: UPDATE oder INSERT
+    if (netzwerk) {
+      const n = netzwerk;
+      const upd = await client.query(
+        `UPDATE onboarding_network
+            SET internetzugangsart=$1, firewall_modell=$2, feste_ip_vorhanden=$3,
+                ip_adresse=$4, vpn_einwahl_erforderlich=$5, aktuelle_vpn_user=$6,
+                geplante_vpn_user=$7, informationen=$8, updated_at=NOW()
+          WHERE onboarding_id=$9`,
+        [
+          n.internetzugangsart ?? null,
+          n.firewall_modell ?? null,
+          toBool(n.feste_ip_vorhanden),
+          n.ip_adresse ?? null,
+          toBool(n.vpn_einwahl_erforderlich),
+          toNumberOrNull(n.aktuelle_vpn_user),
+          toNumberOrNull(n.geplante_vpn_user),
+          n.informationen ?? null,
+          id,
+        ]
+      );
+      if (upd.rowCount === 0) {
+        await client.query(
+          `INSERT INTO onboarding_network
+             (onboarding_id, internetzugangsart, firewall_modell, feste_ip_vorhanden,
+              ip_adresse, vpn_einwahl_erforderlich, aktuelle_vpn_user, geplante_vpn_user, informationen)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [
+            id,
+            n.internetzugangsart ?? null,
+            n.firewall_modell ?? null,
+            toBool(n.feste_ip_vorhanden),
+            n.ip_adresse ?? null,
+            toBool(n.vpn_einwahl_erforderlich),
+            toNumberOrNull(n.aktuelle_vpn_user),
+            toNumberOrNull(n.geplante_vpn_user),
+            n.informationen ?? null,
+          ]
+        );
+      }
+    }
+
+    // Hardware: volle Ersetzung
+    if (hardware) {
+      await client.query('DELETE FROM onboarding_hardware WHERE onboarding_id=$1', [id]);
+      const hwList = Array.isArray(hardware) ? hardware
+                  : Array.isArray(hardware?.hardwareList) ? hardware.hardwareList
+                  : (hardware && Object.keys(hardware).length ? [hardware] : []);
+      for (const hw of hwList) {
+        await client.query(
+          `INSERT INTO onboarding_hardware
+             (onboarding_id, typ, hersteller, modell, seriennummer, standort, ip, details_jsonb, informationen)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [
+            id,
+            hw.typ || null,
+            hw.hersteller || null,
+            hw.modell || null,
+            hw.seriennummer || null,
+            hw.standort || null,
+            hw.ip || null,
+            JSON.stringify(normalizeJSONB(hw.details_jsonb ?? hw.details)),
+            hw.informationen || null,
+          ]
+        );
+      }
+    }
+
+    // Software: volle Ersetzung inkl. Kinder
+    if (software) {
+      await client.query(
+        `DELETE FROM onboarding_software_apps
+          WHERE software_id IN (SELECT software_id FROM onboarding_software WHERE onboarding_id=$1);
+         DELETE FROM onboarding_software_requirements
+          WHERE software_id IN (SELECT software_id FROM onboarding_software WHERE onboarding_id=$1);
+         DELETE FROM onboarding_software WHERE onboarding_id=$1;`,
+        [id]
+      );
+
+      const swList = Array.isArray(software) ? software
+                  : Array.isArray(software?.softwareList) ? software.softwareList
+                  : (software && Object.keys(software).length ? [software] : []);
+      for (const s of swList) {
+        const ins = await client.query(
+          `INSERT INTO onboarding_software
+             (onboarding_id, name, licenses, critical, description, virenschutz, schnittstellen,
+              wartungsvertrag, migration_support, verwendete_applikationen_text)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+           RETURNING software_id`,
+          [
+            id,
+            s.name || null,
+            toNumberOrNull(s.licenses),
+            s.critical || null,
+            s.description || null,
+            s.virenschutz || null,
+            s.schnittstellen || null,
+            s.wartungsvertrag === true,
+            s.migration_support === true,
+            s.verwendete_applikationen_text || null,
+          ]
+        );
+        const softwareId = ins.rows[0].software_id;
+
+        const reqs = Array.isArray(s.requirements) ? s.requirements : [];
+        for (const r of reqs) {
+          await client.query(
+            `INSERT INTO onboarding_software_requirements (software_id, type, detail)
+             VALUES ($1,$2,$3)`,
+            [softwareId, r?.type || null, r?.detail || null]
+          );
+        }
+
+        const apps = Array.isArray(s.apps) ? s.apps
+                   : Array.isArray(s.verwendete_applikationen) ? s.verwendete_applikationen
+                   : [];
+        for (const a of apps) {
+          await client.query(
+            `INSERT INTO onboarding_software_apps (software_id, name) VALUES ($1,$2)`,
+            [softwareId, a?.name ?? a]
+          );
+        }
+      }
+    }
+
+    // Mail: UPDATE oder INSERT
+    if (mail) {
+      const m = mail;
+      const upd = await client.query(
+        `UPDATE onboarding_mail
+            SET anbieter=$1, anzahl_postfach=$2, anzahl_shared=$3, gesamt_speicher=$4,
+                pop3_connector=$5, mobiler_zugriff=$6, informationen=$7, updated_at=NOW()
+          WHERE onboarding_id=$8`,
+        [
+          m.anbieter ?? null,
+          toNumberOrNull(m.anzahl_postfach),
+          toNumberOrNull(m.anzahl_shared),
+          toNumberOrNull(m.gesamt_speicher),
+          toBool(m.pop3_connector),
+          toBool(m.mobiler_zugriff),
+          m.informationen ?? null,
+          id,
+        ]
+      );
+      if (upd.rowCount === 0) {
+        await client.query(
+          `INSERT INTO onboarding_mail
+             (onboarding_id, anbieter, anzahl_postfach, anzahl_shared, gesamt_speicher,
+              pop3_connector, mobiler_zugriff, informationen)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [
+            id,
+            m.anbieter ?? null,
+            toNumberOrNull(m.anzahl_postfach),
+            toNumberOrNull(m.anzahl_shared),
+            toNumberOrNull(m.gesamt_speicher),
+            toBool(m.pop3_connector),
+            toBool(m.mobiler_zugriff),
+            m.informationen ?? null,
+          ]
+        );
+      }
+    }
+
+    // Backup: UPDATE oder INSERT
+    if (backup) {
+      const b = backup;
+      const upd = await client.query(
+        `UPDATE onboarding_backup
+            SET tool=$1, interval=$2, retention=$3, location=$4, size=$5, info=$6, updated_at=NOW()
+          WHERE onboarding_id=$7`,
+        [b.tool ?? null, b.interval ?? null, b.retention ?? null, b.location ?? null, toNumberOrNull(b.size), b.info ?? null, id]
+      );
+      if (upd.rowCount === 0) {
+        await client.query(
+          `INSERT INTO onboarding_backup
+             (onboarding_id, tool, interval, retention, location, size, info)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+          [id, b.tool ?? null, b.interval ?? null, b.retention ?? null, b.location ?? null, toNumberOrNull(b.size), b.info ?? null]
+        );
+      }
+    }
+
+    // Sonstiges: UPDATE oder INSERT
+    if (sonstiges) {
+      const upd = await client.query(
+        'UPDATE onboarding_sonstiges SET text=$1, updated_at=NOW() WHERE onboarding_id=$2',
+        [sonstiges.text || '', id]
+      );
+      if (upd.rowCount === 0) {
+        await client.query(
+          'INSERT INTO onboarding_sonstiges (onboarding_id, text) VALUES ($1,$2)',
+          [id, sonstiges.text || '']
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+    res.json({ message: 'Onboarding aktualisiert', onboarding_id: id });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error('PATCH /api/onboarding/:id error:', e);
+    res.status(500).json({ error: 'Fehler beim Aktualisieren des Onboardings' });
+  } finally {
+    client.release();
+  }
+});
+
+// Nur Status ändern
+app.patch('/api/onboarding/:id(\\d+)/status', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { status } = req.body || {};
+    const allowed = ['neu', 'in Arbeit', 'erledigt', 'offen']; // 'offen' falls noch im Umlauf
+    if (!allowed.includes(status)) return res.status(400).json({ error: 'Ungültiger Status' });
+    const { rowCount } = await pool.query(
+      `UPDATE onboarding SET status=$1, updated_at=NOW() WHERE onboarding_id=$2`,
+      [status, id]
     );
-    res.json({ message: `Status auf "${status}" aktualisiert`, onboarding: result.rows[0] });
-  } catch (error) {
-    console.error('PATCH /api/onboarding/:id/status error:', error);
+    if (!rowCount) return res.status(404).json({ error: 'Onboarding nicht gefunden' });
+    res.json({ message: 'Status aktualisiert' });
+  } catch (e) {
+    console.error('PATCH /api/onboarding/:id/status error:', e);
     res.status(500).json({ error: 'Fehler beim Aktualisieren des Status' });
   }
 });
 
-// ========= 404 =========
-app.use('*', (req, res) => {
-  res.status(404).json({
-    error: 'Route nicht gefunden: ' + req.originalUrl,
-    available_routes: [
-      '/api/health',
-      '/api/test',
-      '/api/auth/login',
-      '/api/auth/register',
-      '/api/auth/forgot-password',
-      '/api/auth/validate-reset-token',
-      '/api/auth/reset-password',
-      '/api/auth/mfa/setup/start',
-      '/api/auth/mfa/setup/verify',
-      '/api/auth/mfa/verify',
-      '/api/customers',
-      '/api/kalkulationen',
-      '/api/kalkulationen/stats',
-      '/api/onboarding',
-      '/api/onboarding/:id/send-email',
-      '/api/onboarding/:id/export',
-    ],
-  });
+// Export eines Onboardings (JSON)
+app.get('/api/onboarding/:id(\\d+)/export', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const onboarding = await pool.query(`
+      SELECT o.*, c.*
+      FROM onboarding o
+      LEFT JOIN customers c ON c.kunden_id = o.kunde_id
+      WHERE o.onboarding_id = $1
+    `, [id]);
+    if (!onboarding.rows.length) return res.status(404).json({ error: 'Onboarding nicht gefunden' });
+
+    const [netzwerk, hardware, software, mail, backup, sonstiges] = await Promise.all([
+      pool.query('SELECT * FROM onboarding_network WHERE onboarding_id=$1', [id]),
+      pool.query('SELECT * FROM onboarding_hardware WHERE onboarding_id=$1 ORDER BY hardware_id', [id]),
+      pool.query(`
+        SELECT 
+          os.*,
+          COALESCE(
+            json_agg(
+              DISTINCT jsonb_build_object(
+                'requirement_id', osr.requirement_id,
+                'type', osr.type,
+                'detail', osr.detail
+              )
+            ) FILTER (WHERE osr.requirement_id IS NOT NULL),
+            '[]'
+          ) AS requirements,
+          COALESCE(
+            json_agg(
+              DISTINCT jsonb_build_object(
+                'app_id', osa.app_id,
+                'name', osa.name
+              )
+            ) FILTER (WHERE osa.app_id IS NOT NULL),
+            '[]'
+          ) AS apps
+        FROM onboarding_software os
+        LEFT JOIN onboarding_software_requirements osr ON osr.software_id = os.software_id
+        LEFT JOIN onboarding_software_apps osa ON osa.software_id = os.software_id
+        WHERE os.onboarding_id=$1
+        GROUP BY os.software_id
+        ORDER BY os.software_id
+      `, [id]),
+      pool.query('SELECT * FROM onboarding_mail WHERE onboarding_id=$1', [id]),
+      pool.query('SELECT * FROM onboarding_backup WHERE onboarding_id=$1', [id]),
+      pool.query('SELECT * FROM onboarding_sonstiges WHERE onboarding_id=$1', [id]),
+    ]);
+
+    const data = {
+      ...onboarding.rows[0],
+      netzwerk: netzwerk.rows[0] || null,
+      hardware: hardware.rows,
+      software: software.rows,
+      mail: mail.rows[0] || null,
+      backup: backup.rows[0] || null,
+      sonstiges: sonstiges.rows[0] || null,
+    };
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="onboarding-${id}.json"`);
+    res.send(JSON.stringify(data, null, 2));
+  } catch (e) {
+    console.error('Export onboarding error:', e);
+    res.status(500).json({ error: 'Fehler beim Exportieren des Onboardings' });
+  }
+});
+
+// ========= KALKULATIONEN (Tabellennamen gefixt) =========
+
+// Liste
+app.get('/api/kalkulationen', async (_req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT k.*, c.firmenname,
+             COALESCE(SUM(p.anzahl * p.dauer_pro_einheit), 0) AS sum_hours
+        FROM kalkulationen k
+        JOIN customers c ON c.kunden_id = k.kunden_id
+   LEFT JOIN kalkulation_positionen p ON p.kalkulations_id = k.kalkulations_id
+    GROUP BY k.kalkulations_id, c.firmenname
+    ORDER BY k.datum DESC
+    `);
+    res.json(rows);
+  } catch (e) {
+    console.error('GET /api/kalkulationen error:', e);
+    res.status(500).json({ error: 'Fehler beim Abrufen der Kalkulationen' });
+  }
+});
+
+// Details
+app.get('/api/kalkulationen/:id(\\d+)', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { rows: k } = await pool.query(
+      `SELECT k.*, c.firmenname FROM kalkulationen k
+        JOIN customers c ON c.kunden_id = k.kunden_id
+       WHERE k.kalkulations_id=$1`,
+      [id]
+    );
+    if (!k.length) return res.status(404).json({ error: 'Kalkulation nicht gefunden' });
+    const { rows: pos } = await pool.query(
+      `SELECT * FROM kalkulation_positionen WHERE kalkulations_id = $1 ORDER BY position_id`,
+      [id]
+    );
+    res.json({ ...k[0], positionen: pos });
+  } catch (e) {
+    console.error('GET /api/kalkulationen/:id error:', e);
+    res.status(500).json({ error: 'Fehler beim Abrufen der Kalkulation' });
+  }
+});
+
+// (Optional) einfache Stats – Kunden/Projekte zählen
+// ========= Dashboard-Stats =========
+app.get('/api/kalkulationen/stats', async (_req, res) => {
+  try {
+    const [kundenQ, projekteQ, stundenQ] = await Promise.all([
+      pool.query(`SELECT COUNT(*)::int AS cnt FROM customers`),
+      pool.query(`SELECT COUNT(*)::int AS cnt FROM onboarding`), // <-- Projekte = Onboardings
+      pool.query(`SELECT COALESCE(SUM(gesamtzeit),0)::float8 AS total_hours FROM kalkulationen`)
+    ]);
+
+    res.json({
+      activeCustomers: Number(kundenQ.rows[0].cnt || 0),
+      runningProjects: Number(projekteQ.rows[0].cnt || 0), // <-- jetzt aus onboarding
+      totalHours: Number(stundenQ.rows[0].total_hours || 0),
+    });
+  } catch (e) {
+    console.error('GET /api/kalkulationen/stats error:', e);
+    res.status(500).json({ error: 'Fehler beim Abrufen der Statistiken' });
+  }
+});
+
+// ========= 404 Fallback =========
+app.use((req, res) => {
+  res.status(404).json({ error: `Route nicht gefunden: ${req.originalUrl}` });
 });
 
 // ========= Start =========
-const PORT = Number(process.env.PORT || 5000);
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server läuft auf Port ${PORT}`);
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`API listening on http://localhost:${PORT}`);
 });
