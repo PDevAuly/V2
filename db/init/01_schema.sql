@@ -224,6 +224,26 @@ CREATE TRIGGER trg_onboarding_mail_updated
   BEFORE UPDATE ON onboarding_mail
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+-- Backup
+CREATE TABLE IF NOT EXISTS onboarding_backup (
+  backup_id     BIGSERIAL PRIMARY KEY,
+  onboarding_id BIGINT NOT NULL REFERENCES onboarding(onboarding_id) ON DELETE CASCADE,
+  tool          TEXT,
+  interval      TEXT,
+  retention     TEXT,
+  location      TEXT,
+  size          NUMERIC(10, 2),
+  info          TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS backup_onboarding_idx ON onboarding_backup(onboarding_id);
+
+DROP TRIGGER IF EXISTS trg_onboarding_backup_updated ON onboarding_backup;
+CREATE TRIGGER trg_onboarding_backup_updated
+  BEFORE UPDATE ON onboarding_backup
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
 -- Software + Requirements + Apps
 CREATE TABLE IF NOT EXISTS onboarding_software (
   software_id     BIGSERIAL PRIMARY KEY,

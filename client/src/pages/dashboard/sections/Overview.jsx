@@ -2,15 +2,15 @@ import React from 'react';
 import { User, Clock, TrendingUp, ChevronRight, Briefcase } from 'lucide-react';
 import { euro, statusBadgeClass } from 'utils/format';
 
-export default function Overview({ stats = {}, kalkulationen = [], onGoCustomers }) {
+export default function Overview({ stats = {}, kalkulationen = [], onGoCustomers, onGoProjects }) {
   const safeStats = {
     activeCustomers: stats.activeCustomers ?? 0,
-    runningProjects: stats.runningProjects ?? 0, // Neue Statistik
-    totalHours: stats.totalHours ?? 0, // Gesamtstunden statt nur monatlich
+    runningProjects: stats.runningProjects ?? 0,
+    totalHours: stats.totalHours ?? 0,
   };
 
   console.log('🔍 Debug Overview - stats:', stats);           // NEU
-console.log('🔍 Debug Overview - safeStats:', safeStats);  // NEU
+  console.log('🔍 Debug Overview - safeStats:', safeStats);  // NEU
   const list = Array.isArray(kalkulationen) ? kalkulationen : [];
 
   return (
@@ -28,13 +28,15 @@ console.log('🔍 Debug Overview - safeStats:', safeStats);  // NEU
             label: 'Kunden', 
             value: safeStats.activeCustomers, 
             clickable: true, 
-            onClick: onGoCustomers 
+            onClick: onGoCustomers
           },
           { 
             icon: Briefcase, 
             bg: 'bg-purple-500', 
             label: 'Projekte', 
-            value: safeStats.runningProjects 
+            value: safeStats.runningProjects,
+            clickable: true,
+            onClick: onGoProjects
           },
           { 
             icon: Clock, 
@@ -87,7 +89,7 @@ console.log('🔍 Debug Overview - safeStats:', safeStats);  // NEU
               {list.slice(0, 5).map((k, idx) => (
                 <tr key={k.kalkulations_id ?? `${k.kunde_id ?? 'k'}-${k.datum ?? 'd'}-${idx}`} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                    <span className="text-sm font-medium text-gray-90 dark:text-gray-100">
                       {k.kunde_name || k.firmenname || '—'}
                     </span>
                   </td>

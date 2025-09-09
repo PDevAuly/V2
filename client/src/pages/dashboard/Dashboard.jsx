@@ -162,7 +162,12 @@ export default function DashboardPage({ onLogout, userInfo }) {
 
           <main className="flex-1 p-6 overflow-auto bg-gray-50 dark:bg-gray-900">
             {active === 'overview' && (
-              <Overview stats={stats} kalkulationen={kalkulationen} onGoCustomers={() => setActive('customers')} />
+              <Overview
+                stats={stats}
+                kalkulationen={kalkulationen}
+                onGoCustomers={() => setActive('customers')}
+                onGoProjects={() => setActive('projects')}   // << neu
+              />
             )}
 
            {active === 'customers' && (
