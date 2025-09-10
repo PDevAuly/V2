@@ -769,62 +769,72 @@ app.patch('/api/onboarding/:id(\\d+)', async (req, res) => {
       }
     }
 
-    // Software: volle Ersetzung inkl. Kinder
-    if (software) {
+  if (software) {
+  // Nur Parent löschen – Kinder (requirements, apps) fallen per ON DELETE CASCADE mit
+  await client.query(
+    `DELETE FROM onboarding_software WHERE onboarding_id=$1`,
+    [id]
+  );
+
+  const swList = Array.isArray(software) ? software
+              : Array.isArray(software?.softwareList) ? software.softwareList
+              : (software && Object.keys(software).length ? [software] : []);
+
+  for (const s of swList) {
+    const { rows: [ins] } = await client.query(
+      `INSERT INTO onboarding_software (
+         onboarding_id, name, licenses, critical, description, virenschutz, schnittstellen,
+         wartungsvertrag, migration_support, verwendete_applikationen_text
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       RETURNING software_id`,
+      [
+        id,
+        s.name ?? null,
+        toNumberOrNull(s.licenses),
+        s.critical ?? null,
+        s.description ?? null,
+        s.virenschutz ?? null,
+        s.schnittstellen ?? null,
+        toBool(s.wartungsvertrag),
+        toBool(s.migration_support),
+        s.verwendete_applikationen_text ?? null,
+      ]
+    );
+    const softwareId = ins.software_id;
+
+    // Requirements (optional)
+    const reqs = Array.isArray(s.requirements) ? s.requirements : [];
+    for (const r of reqs) {
       await client.query(
-        `DELETE FROM onboarding_software_apps
-          WHERE software_id IN (SELECT software_id FROM onboarding_software WHERE onboarding_id=$1);
-         DELETE FROM onboarding_software_requirements
-          WHERE software_id IN (SELECT software_id FROM onboarding_software WHERE onboarding_id=$1);
-         DELETE FROM onboarding_software WHERE onboarding_id=$1;`,
-        [id]
+        `INSERT INTO onboarding_software_requirements (software_id, type, detail)
+         VALUES ($1,$2,$3)`,
+        [softwareId, r?.type ?? null, r?.detail ?? null]
       );
-
-      const swList = Array.isArray(software) ? software
-                  : Array.isArray(software?.softwareList) ? software.softwareList
-                  : (software && Object.keys(software).length ? [software] : []);
-      for (const s of swList) {
-        const ins = await client.query(
-          `INSERT INTO onboarding_software
-             (onboarding_id, name, licenses, critical, description, virenschutz, schnittstellen,
-              wartungsvertrag, migration_support, verwendete_applikationen_text)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-           RETURNING software_id`,
-          [
-            id,
-            s.name || null,
-            toNumberOrNull(s.licenses),
-            s.critical || null,
-            s.description || null,
-            s.virenschutz || null,
-            s.schnittstellen || null,
-            s.wartungsvertrag === true,
-            s.migration_support === true,
-            s.verwendete_applikationen_text || null,
-          ]
-        );
-        const softwareId = ins.rows[0].software_id;
-
-        const reqs = Array.isArray(s.requirements) ? s.requirements : [];
-        for (const r of reqs) {
-          await client.query(
-            `INSERT INTO onboarding_software_requirements (software_id, type, detail)
-             VALUES ($1,$2,$3)`,
-            [softwareId, r?.type || null, r?.detail || null]
-          );
-        }
-
-        const apps = Array.isArray(s.apps) ? s.apps
-                   : Array.isArray(s.verwendete_applikationen) ? s.verwendete_applikationen
-                   : [];
-        for (const a of apps) {
-          await client.query(
-            `INSERT INTO onboarding_software_apps (software_id, name) VALUES ($1,$2)`,
-            [softwareId, a?.name ?? a]
-          );
-        }
-      }
     }
+
+    // Apps: akzeptiert s.apps (Array aus Strings/Objekten), s.verwendete_applikationen (Array)
+    // oder s.verwendete_applikationen_text (Zeilenweise)
+    let apps = [];
+    if (Array.isArray(s.apps)) {
+      apps = s.apps;
+    } else if (Array.isArray(s.verwendete_applikationen)) {
+      apps = s.verwendete_applikationen;
+    } else if (s.verwendete_applikationen_text) {
+      apps = String(s.verwendete_applikationen_text)
+        .split('\n')
+        .map(x => x.trim())
+        .filter(Boolean);
+    }
+
+    for (const a of apps) {
+      await client.query(
+        `INSERT INTO onboarding_software_apps (software_id, name)
+         VALUES ($1,$2)`,
+        [softwareId, (typeof a === 'string' ? a : (a?.name ?? null))]
+      );
+    }
+  }
+}
 
     // Mail: UPDATE oder INSERT
     if (mail) {

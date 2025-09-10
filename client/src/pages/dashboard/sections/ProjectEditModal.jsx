@@ -58,7 +58,7 @@ export default function ProjectEditModal({
       try {
         setLoading(true);
         setError('');
-        const data = await fetchJSON(`/api/onboarding/${onboardingId}`);
+        const data = await fetchJSON(`/onboarding/${onboardingId}`);
 
         if (!mounted) return;
         setStatus(data.status || 'neu');
@@ -177,6 +177,10 @@ export default function ProjectEditModal({
     }));
 
   // ---------- Speichern ----------
+// src/components/ProjectEditModal.jsx
+// ... (vorheriger Code bleibt unverändert)
+
+  // ---------- Speichern ----------
   const save = async () => {
     try {
       setSaving(true);
@@ -210,8 +214,8 @@ export default function ProjectEditModal({
           schnittstellen: s.schnittstellen || null,
           wartungsvertrag: !!s.wartungsvertrag,
           migration_support: !!s.migration_support,
-          verwendete_applikationen_text: s.verwendete_applikationen_text || null,
-          // Alternativ könnten wir apps als Array senden; der Server kann beides
+          // Apps als Array von Objekten mit name-Eigenschaft für das Backend
+          apps: toListFromText(s.verwendete_applikationen_text).map(name => ({ name })),
           requirements: (s.requirements || []).map((r) => ({ type: r.type || null, detail: r.detail || null })),
         })),
         mail: {
@@ -229,7 +233,7 @@ export default function ProjectEditModal({
         sonstiges: { text: sonstiges.text || '' },
       };
 
-      await fetchJSON(`/api/onboarding/${onboardingId}`, {
+      await fetchJSON(`/onboarding/${onboardingId}`, {
         method: 'PATCH',
         body: JSON.stringify(payload),
         headers: { 'Content-Type': 'application/json' },
@@ -244,10 +248,12 @@ export default function ProjectEditModal({
     }
   };
 
+// ... (restlicher Code bleibt unverändert)
+
   // ---------- UI ----------
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className={`w-full max-w-5xl max-h-[92vh] overflow-hidden rounded-xl border ${classes.border} ${classes.bg} shadow-2xl`}>
+      <div className={`w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col rounded-xl border ${classes.border} ${classes.bg} shadow-2xl`}>
         {/* Header */}
         <div className={`flex items-center justify-between px-5 py-3 border-b ${classes.border}`}>
           <h2 className={`text-lg font-semibold ${classes.text}`}>Onboarding bearbeiten</h2>
@@ -272,7 +278,7 @@ export default function ProjectEditModal({
         </div>
 
         {/* Body (scrollbar) */}
-        <div className="overflow-y-auto p-5 space-y-6">
+        <div className="overflow-y-auto flex-1 p-5 space-y-6">
           {loading ? (
             <p className={`${classes.muted}`}>Lade Daten…</p>
           ) : error ? (
@@ -587,7 +593,7 @@ export default function ProjectEditModal({
                         </label>
 
                         <div className="md:col-span-2">
-                          <label className={`block text-sm ${classes.text2} mb-1`}>Verwendete Applikationen (eine pro Zeile)</label>
+                          <label className={`block text-sm ${classes.text2} mb-1`}>Verwendete Applikationen (eine per Zeile)</label>
                           <textarea rows={3} value={s.verwendete_applikationen_text || ''} onChange={(e) => updateSW(i, 'verwendete_applikationen_text', e.target.value)} className={`w-full px-3 py-2 border rounded-md ${classes.input}`} placeholder="Outlook&#10;Excel&#10;Teams" />
                         </div>
 
@@ -651,15 +657,21 @@ export default function ProjectEditModal({
                   <input className={`px-3 py-2 border rounded-md ${classes.input}`} placeholder="Location" value={backup.location || ''} onChange={(e) => setBackup((b) => ({ ...b, location: e.target.value }))} />
                   <input type="number" min="0" step="0.01" className={`px-3 py-2 border rounded-md ${classes.input}`} placeholder="Größe (GB)" value={backup.size ?? ''} onChange={(e) => setBackup((b) => ({ ...b, size: e.target.value }))} />
                   <div className="md:col-span-2">
-                    <textarea rows={3} className={`w-full px-3 py-2 border rounded-md ${classes.input}`} placeholder="Info" value={backup.info || ''} onChange={(e) => setBackup((b) => ({ ...b, info: e.target.value }))} />
+                    <textarea rows={3} className={`w-full px-3 py-2 border rounded-md ${classes.input}`} placeholder="Weitere Informationen" value={backup.info || ''} onChange={(e) => setBackup((b) => ({ ...b, info: e.target.value }))} />
                   </div>
                 </div>
               </section>
 
               {/* Sonstiges */}
               <section className={`rounded-lg border ${classes.border} p-4`}>
-                <h3 className={`font-medium mb-2 ${classes.text}`}>Sonstiges</h3>
-                <textarea rows={3} className={`w-full px-3 py-2 border rounded-md ${classes.input}`} value={sonstiges.text || ''} onChange={(e) => setSonstiges({ text: e.target.value })} />
+                <h3 className={`font-medium ${classes.text} mb-3`}>Sonstiges</h3>
+                <textarea
+                  rows={4}
+                  className={`w-full px-3 py-2 border rounded-md ${classes.input}`}
+                  placeholder="Sonstige Informationen, Besonderheiten, Anmerkungen..."
+                  value={sonstiges.text || ''}
+                  onChange={(e) => setSonstiges({ text: e.target.value })}
+                />
               </section>
             </>
           )}
@@ -667,9 +679,12 @@ export default function ProjectEditModal({
 
         {/* Footer */}
         <div className={`flex items-center justify-between px-5 py-3 border-t ${classes.border}`}>
-          {error ? <span className="text-red-500 text-sm">{error}</span> : <span />}
-          <div className="flex gap-2">
-            <button onClick={onClose} className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600">
+          <p className={`text-sm ${classes.muted}`}>ID: {onboardingId}</p>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+            >
               Abbrechen
             </button>
             <button
@@ -677,8 +692,11 @@ export default function ProjectEditModal({
               disabled={saving}
               className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
             >
-              <Save className="w-4 h-4" />
-              {saving ? 'Speichert…' : 'Speichern'}
+              {saving ? 'Speichern...' : (
+                <>
+                  <Save className="w-4 h-4" /> Speichern
+                </>
+              )}
             </button>
           </div>
         </div>
