@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Briefcase, Eye, Edit, CheckCircle, Clock, Building, Network } from 'lucide-react';
+import { Briefcase, Eye, Edit, CheckCircle, Clock, Building, Network, X } from 'lucide-react';
 import { fetchJSON } from 'services/api';
+import ProjectEditModal from '../sections/ProjectEditModal'; // Pfad ggf. anpassen
 
 const statusConfig = {
   'neu': {
@@ -24,22 +25,25 @@ export default function ProjectsSection({ isDark, customers = [], loading, onRef
   const [projects, setProjects] = useState([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState({});
+  const [editingId, setEditingId] = useState(null); // NEU: State für Edit-Modal
 
   // Details-Modal
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailData, setDetailData] = useState(null);
 
-  // Edit-Modal
+  // Edit-Modal (alt)
   const [editOpen, setEditOpen] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
   const [editForm, setEditForm] = useState({
     onboarding_id: null,
+    title: '',
+    description: '',
     status: 'neu',
-    datum: '',
-    mitarbeiter_id: '',
-    infrastructure_data: '{}',
+    start_date: '',
+    end_date: '',
+    budget: ''
   });
 
   const classes = {
@@ -107,49 +111,20 @@ export default function ProjectsSection({ isDark, customers = [], loading, onRef
     }
   };
 
-  // BEARBEITEN: lädt Details, befüllt JSON-Editor und öffnet Modal
+  // BEARBEITEN: lädt Details und öffnet Modal (alt)
   const openEdit = async (project) => {
     try {
       setEditLoading(true);
       const data = await fetchJSON(`/onboarding/${project.onboarding_id}`);
 
-      // Infrastruktur-Objekt aus den Detailfeldern zusammenbauen
-      const infra = {
-        netzwerk: data.netzwerk || {},
-        hardware: Array.isArray(data.hardware) ? data.hardware.map(h => ({
-          typ: h.typ ?? null,
-          hersteller: h.hersteller ?? null,
-          modell: h.modell ?? null,
-          seriennummer: h.seriennummer ?? null,
-          standort: h.standort ?? null,
-          ip: h.ip ?? null,
-          details_jsonb: h.details_jsonb ?? {},
-          informationen: h.informationen ?? null,
-        })) : [],
-        software: Array.isArray(data.software) ? data.software.map(s => ({
-          name: s.name ?? null,
-          licenses: s.licenses ?? null,
-          critical: s.critical ?? null,
-          description: s.description ?? null,
-          virenschutz: s.virenschutz ?? null,
-          schnittstellen: s.schnittstellen ?? null,
-          wartungsvertrag: !!s.wartungsvertrag,
-          migration_support: !!s.migration_support,
-          verwendete_applikationen_text: s.verwendete_applikationen_text ?? null,
-          requirements: Array.isArray(s.requirements) ? s.requirements : [],
-          apps: Array.isArray(s.apps) ? s.apps : [],
-        })) : [],
-        mail: data.mail || {},
-        backup: data.backup || {},
-        sonstiges: data.sonstiges || {},
-      };
-
       setEditForm({
         onboarding_id: data.onboarding_id,
+        title: data.title || '',
+        description: data.description || '',
         status: data.status || 'neu',
-        datum: (data.datum || '').slice(0, 10),
-        mitarbeiter_id: data.mitarbeiter_id ?? '',
-        infrastructure_data: JSON.stringify(infra, null, 2),
+        start_date: data.start_date ? data.start_date.slice(0, 10) : '',
+        end_date: data.end_date ? data.end_date.slice(0, 10) : '',
+        budget: data.budget != null ? String(data.budget) : ''
       });
 
       setEditOpen(true);
@@ -161,25 +136,18 @@ export default function ProjectsSection({ isDark, customers = [], loading, onRef
     }
   };
 
-  // BEARBEITEN speichern
+  // BEARBEITEN speichern (alt)
   const saveEdit = async () => {
     try {
       setSaveLoading(true);
 
-      let infraParsed = {};
-      try {
-        infraParsed = editForm.infrastructure_data ? JSON.parse(editForm.infrastructure_data) : {};
-      } catch (e) {
-        alert('Infrastruktur-Daten sind kein gültiges JSON.');
-        setSaveLoading(false);
-        return;
-      }
-
       const body = {
+        title: editForm.title.trim(),
+        description: editForm.description.trim(),
         status: editForm.status,
-        datum: editForm.datum || null,
-        mitarbeiter_id: editForm.mitarbeiter_id === '' ? null : Number(editForm.mitarbeiter_id),
-        infrastructure_data: infraParsed,
+        start_date: editForm.start_date || null,
+        end_date: editForm.end_date || null,
+        budget: editForm.budget === '' ? null : Number(editForm.budget)
       };
 
       await fetchJSON(`/onboarding/${editForm.onboarding_id}`, {
@@ -248,7 +216,7 @@ export default function ProjectsSection({ isDark, customers = [], loading, onRef
             <table className="w-full">
               <thead className={`${isDark ? 'bg-gray-700' : 'bg-gray-50'} border-b ${classes.borderClass}`}>
                 <tr>
-                  {['Kunde', 'Erstellt', 'Status', 'Netzwerk', 'Hardware', 'Software', 'Aktionen'].map((header) => (
+                  {['Kunde', 'Titel', 'Erstellt', 'Status', 'Netzwerk', 'Hardware', 'Software', 'Aktionen'].map((header) => (
                     <th
                       key={header}
                       className={`px-6 py-3 text-left text-xs font-medium ${classes.textMutedClass} uppercase tracking-wider`}
@@ -279,6 +247,14 @@ export default function ProjectsSection({ isDark, customers = [], loading, onRef
                               ID: {project.kunde_id}
                             </div>
                           </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className={`text-sm font-medium ${classes.textClass}`}>
+                          {project.title || 'Ohne Titel'}
+                        </div>
+                        <div className={`text-xs ${classes.textMutedClass} truncate max-w-xs`}>
+                          {project.description || 'Keine Beschreibung'}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -355,7 +331,7 @@ export default function ProjectsSection({ isDark, customers = [], loading, onRef
                             Details
                           </button>
                           <button
-                            onClick={() => openEdit(project)}
+                            onClick={() => setEditingId(project.onboarding_id)}
                             className="inline-flex items-center px-3 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 text-xs font-medium rounded-full transition-colors"
                             title="Projekt bearbeiten"
                           >
@@ -373,6 +349,137 @@ export default function ProjectsSection({ isDark, customers = [], loading, onRef
         </div>
       )}
 
+      {/* NEU: ProjectEditModal */}
+      {editingId && (
+        <ProjectEditModal
+          onboardingId={editingId}
+          isDark={isDark}
+          onClose={() => setEditingId(null)}
+          onSaved={() => {
+            loadProjects();
+            if (onRefreshData) onRefreshData();
+          }}
+        />
+      )}
+
+      {/* ALTES EDIT Modal (kann entfernt werden, wenn nicht mehr benötigt) */}
+      {editOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className={`${classes.bgClass} ${classes.borderClass} rounded-lg shadow-xl border p-6 max-w-3xl w-full max-h-[85vh] overflow-y-auto`}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className={`text-lg font-medium ${classes.textClass}`}>
+                Projekt bearbeiten – ID {editForm.onboarding_id}
+              </h3>
+              <button
+                onClick={() => setEditOpen(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {editLoading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                <p className={classes.textMutedClass}>Lade Projektdaten…</p>
+              </div>
+            ) : (
+              <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); saveEdit(); }}>
+                {/* Titel */}
+                <div>
+                  <label className={`block text-sm mb-1 ${classes.textSecondaryClass}`}>Titel</label>
+                  <input
+                    className="w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-900"
+                    value={editForm.title}
+                    onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))}
+                    required
+                  />
+                </div>
+
+                {/* Beschreibung */}
+                <div>
+                  <label className={`block text-sm mb-1 ${classes.textSecondaryClass}`}>Beschreibung</label>
+                  <textarea
+                    className="w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-900"
+                    rows={4}
+                    value={editForm.description}
+                    onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Status */}
+                  <div>
+                    <label className={`block text-sm mb-1 ${classes.textSecondaryClass}`}>Status</label>
+                    <select
+                      className="w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-900"
+                      value={editForm.status}
+                      onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}
+                    >
+                      <option value="neu">Neu</option>
+                      <option value="in Arbeit">In Arbeit</option>
+                      <option value="erledigt">Erledigt</option>
+                    </select>
+                  </div>
+
+                  {/* Startdatum */}
+                  <div>
+                    <label className={`block text-sm mb-1 ${classes.textSecondaryClass}`}>Startdatum</label>
+                    <input
+                      type="date"
+                      className="w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-900"
+                      value={editForm.start_date}
+                      onChange={e => setEditForm(f => ({ ...f, start_date: e.target.value }))}
+                    />
+                  </div>
+
+                  {/* Enddatum */}
+                  <div>
+                    <label className={`block text-sm mb-1 ${classes.textSecondaryClass}`}>Enddatum</label>
+                    <input
+                      type="date"
+                      className="w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-900"
+                      value={editForm.end_date}
+                      onChange={e => setEditForm(f => ({ ...f, end_date: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                {/* Budget */}
+                <div>
+                  <label className={`block text-sm mb-1 ${classes.textSecondaryClass}`}>Budget (EUR)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-900"
+                    value={editForm.budget}
+                    onChange={e => setEditForm(f => ({ ...f, budget: e.target.value }))}
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditOpen(false)}
+                    className="px-4 py-2 rounded-md border hover:bg-gray-50 dark:hover:bg-gray-700"
+                    disabled={saveLoading}
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
+                    disabled={saveLoading}
+                  >
+                    {saveLoading ? 'Speichern…' : 'Speichern'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* DETAILS Modal */}
       {detailOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -385,7 +492,7 @@ export default function ProjectsSection({ isDark, customers = [], loading, onRef
                 onClick={() => setDetailOpen(false)}
                 className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -403,6 +510,16 @@ export default function ProjectsSection({ isDark, customers = [], loading, onRef
                     <div><span className="font-medium">Status:</span> {detailData.status}</div>
                     <div><span className="font-medium">Datum:</span> {detailData.datum ? new Date(detailData.datum).toLocaleDateString('de-DE') : '—'}</div>
                     <div><span className="font-medium">Mitarbeiter-ID:</span> {detailData.mitarbeiter_id ?? '—'}</div>
+                  </div>
+                </div>
+
+                {/* Titel und Beschreibung */}
+                <div className={`${classes.bgClass} ${classes.borderClass} rounded border p-4`}>
+                  <h4 className={`text-md font-semibold mb-3 ${classes.textClass}`}>Projektinformationen</h4>
+                  <div className="space-y-2 text-sm">
+                    <div><span className="font-medium">Titel:</span> {detailData.title || '—'}</div>
+                    <div><span className="font-medium">Beschreibung:</span> {detailData.description || '—'}</div>
+                    <div><span className="font-medium">Budget:</span> {detailData.budget ? `${detailData.budget} €` : '—'}</div>
                   </div>
                 </div>
 
@@ -521,103 +638,6 @@ export default function ProjectsSection({ isDark, customers = [], loading, onRef
                   </button>
                 </div>
               </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* EDIT Modal */}
-      {editOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className={`${classes.bgClass} ${classes.borderClass} rounded-lg shadow-xl border p-6 max-w-3xl w-full max-h-[85vh] overflow-y-auto`}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className={`text-lg font-medium ${classes.textClass}`}>
-                Projekt bearbeiten – ID {editForm.onboarding_id}
-              </h3>
-              <button
-                onClick={() => setEditOpen(false)}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
-              >
-                ✕
-              </button>
-            </div>
-
-            {editLoading ? (
-              <div className="text-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                <p className={classes.textMutedClass}>Lade Projektdaten…</p>
-              </div>
-            ) : (
-              <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); saveEdit(); }}>
-                {/* Status */}
-                <div>
-                  <label className={`block text-sm mb-1 ${classes.textSecondaryClass}`}>Status</label>
-                  <select
-                    className="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700"
-                    value={editForm.status}
-                    onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}
-                  >
-                    <option value="neu">Neu</option>
-                    <option value="in Arbeit">In Arbeit</option>
-                    <option value="erledigt">Erledigt</option>
-                  </select>
-                </div>
-
-                {/* Datum */}
-                <div>
-                  <label className={`block text-sm mb-1 ${classes.textSecondaryClass}`}>Datum</label>
-                  <input
-                    type="date"
-                    className="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700"
-                    value={editForm.datum || ''}
-                    onChange={e => setEditForm(f => ({ ...f, datum: e.target.value }))}
-                  />
-                </div>
-
-                {/* Mitarbeiter-ID */}
-                <div>
-                  <label className={`block text-sm mb-1 ${classes.textSecondaryClass}`}>Mitarbeiter-ID (optional)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="z. B. 1"
-                    className="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700"
-                    value={editForm.mitarbeiter_id}
-                    onChange={e => setEditForm(f => ({ ...f, mitarbeiter_id: e.target.value }))}
-                  />
-                </div>
-
-                {/* Infrastruktur JSON */}
-                <div>
-                  <label className={`block text-sm mb-1 ${classes.textSecondaryClass}`}>Infrastruktur (JSON)</label>
-                  <textarea
-                    rows={10}
-                    className="w-full rounded border px-3 py-2 font-mono text-sm bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700"
-                    value={editForm.infrastructure_data}
-                    onChange={e => setEditForm(f => ({ ...f, infrastructure_data: e.target.value }))}
-                  />
-                  <p className={`text-xs mt-1 ${classes.textMutedClass}`}>
-                    Hinweis: Gültiges JSON angeben, z. B. {'{ "netzwerk": {}, "hardware": [], "software": [] }'}
-                  </p>
-                </div>
-
-                <div className="flex justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setEditOpen(false)}
-                    className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600"
-                  >
-                    Abbrechen
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={saveLoading}
-                    className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    {saveLoading ? 'Speichere…' : 'Speichern'}
-                  </button>
-                </div>
-              </form>
             )}
           </div>
         </div>

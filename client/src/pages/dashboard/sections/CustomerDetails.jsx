@@ -120,15 +120,6 @@ export default function CustomerDetails({ customerId, onBack, isDark }) {
           ))}
         </div>
 
-        {/* Ansprechpartner */}
-        {customer.ansprechpartner_count > 0 && (
-          <div className={`border-t ${classes.borderClass} pt-6 mt-6`}>
-            <h4 className={`text-md font-medium ${classes.textClass} mb-4`}>Ansprechpartner</h4>
-            <p className={classes.textMutedClass}>
-              {customer.ansprechpartner_count} Ansprechpartner erfasst
-            </p>
-          </div>
-        )}
       </div>
     </div>
   );

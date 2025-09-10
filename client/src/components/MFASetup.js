@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Shield, Download, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-export default function MFASetup({ userInfo: propUserInfo }) {
+export default function MFASetup({ userInfo: propUserInfo, accessToken: propAccessToken, onMFAEnabled }) {
   const navigate = useNavigate();
   const [step, setStep] = useState('start');
   const [qrCode, setQrCode] = useState('');
@@ -24,8 +24,8 @@ export default function MFASetup({ userInfo: propUserInfo }) {
     console.log('MFASetup userInfo:', userInfo);
   }, [userInfo]);
 
-  const getAccessToken = () => {
-    const token = localStorage.getItem('accessToken');
+   const getAccessToken = () => {
+   const token = propAccessToken || localStorage.getItem('accessToken');
     if (!token || token === 'fwhlwemwldung') {
       // Token ist ungültig oder Platzhalter
       setError('Ungültiger Access-Token. Bitte loggen Sie sich erneut ein.');
@@ -121,7 +121,7 @@ export default function MFASetup({ userInfo: propUserInfo }) {
       // User-Info aktualisieren
       const updatedUser = { ...userInfo, mfa_enabled: true };
       setUserInfo(updatedUser);
-      localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+      localStorage.setItem('user', JSON.stringify(updatedUser));
       
       // Auch in anderen möglichen Speicherorten aktualisieren
       const globalUser = JSON.parse(localStorage.getItem('user') || 'null');
@@ -129,7 +129,10 @@ export default function MFASetup({ userInfo: propUserInfo }) {
         localStorage.setItem('user', JSON.stringify({...globalUser, mfa_enabled: true}));
       }
       
-      setStep('completed');
+       setStep('completed');
+ if (typeof onMFAEnabled === 'function') {
+try { onMFAEnabled(true); } catch {}
+}
     } catch (err) {
       console.error('MFA Verify Fehler:', err);
       setError(err.message || 'Verifizierung fehlgeschlagen');

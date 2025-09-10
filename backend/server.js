@@ -6,25 +6,19 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
-const nodemailer = require('nodemailer');
-const speakeasy = require('speakeasy');
-const QRCode = require('qrcode');
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
+const speakeasy = require('speakeasy');
+const QRCode = require('qrcode');
+const nodemailer = require('nodemailer');
 
-// ========= Konstante / Flags =========
-const SALT_ROUNDS = 12;
-const MFA_ISSUER = process.env.MFA_ISSUER || 'Pauly Dashboard';
-const isProd = process.env.NODE_ENV === 'production';
-
-// ========= App / Middleware =========
 const app = express();
+const isProd = process.env.NODE_ENV === 'production';
+const PORT = process.env.PORT || 3001;
 
+// ======================= MIDDLEWARE =======================
 const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || '')
-  .split(',')
-  .map(s => s.trim())
-  .filter(Boolean);
-
+  .split(',').map(s => s.trim()).filter(Boolean);
 const corsOptions = isProd
   ? { origin: ALLOWED_ORIGINS.length ? ALLOWED_ORIGINS : false, credentials: true }
   : { origin: true, credentials: true };
@@ -33,7 +27,7 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 app.use(express.json({ limit: '2mb' }));
 
-// ========= DB =========
+// ======================= DB =======================
 const pool = new Pool({
   user: process.env.PGUSER || 'postgres',
   host: process.env.PGHOST || 'db',
@@ -42,10 +36,12 @@ const pool = new Pool({
   port: Number(process.env.PGPORT || 5432),
 });
 
-// ========= Helper =========
+// ======================= HELPERS =======================
+const SALT_ROUNDS = 12;
+const MFA_ISSUER = process.env.MFA_ISSUER || 'Pauly Dashboard';
+
 const toNumberOrNull = (v) =>
   v === '' || v === undefined || v === null || isNaN(Number(v)) ? null : Number(v);
-
 const toBool = (v) => v === true || v === 'true' || v === 1 || v === '1';
 
 const normalizeJSONB = (val) => {
@@ -55,6 +51,14 @@ const normalizeJSONB = (val) => {
     try { return JSON.parse(val); } catch { return { text: val }; }
   }
   return { value: val };
+};
+
+const validatePassword = (password) => {
+  const errors = [];
+  if (!password || password.length < 8) errors.push('Mindestens 8 Zeichen');
+  if (!/[A-Z]/.test(password)) errors.push('Mindestens ein Großbuchstabe');
+  if (!/[!@#$%^&*()_+=\[\]{}|;:,.<>?/~`-]/.test(password)) errors.push('Mindestens ein Sonderzeichen');
+  return errors;
 };
 
 const hashPassword = (pwd) => bcrypt.hash(pwd, SALT_ROUNDS);
@@ -71,18 +75,17 @@ function generateBackupCodes(n = 8) {
   return out;
 }
 
-// Dev-freundlicher Token-Check (in Prod verpflichtend)
 const verifyToken = (req, res, next) => {
   const h = req.headers.authorization || '';
   if (!h.startsWith('Bearer ')) {
-    if (!isProd) return next(); // im Dev-Modus durchlassen
-    return res.status(401).json({ error: 'Ungültiger Access-Token. Bitte loggen Sie sich erneut ein.' });
+    if (!isProd) return next(); // dev: durchlassen
+    return res.status(401).json({ error: 'Ungültiger Access-Token' });
   }
-  // TODO: echte JWT-Prüfung
+  // TODO: echte JWT-Prüfung in Prod
   next();
 };
 
-// ========= Mail =========
+// ======================= MAIL =======================
 const emailConfig = {
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
   port: Number(process.env.SMTP_PORT || 587),
@@ -94,7 +97,7 @@ const emailConfig = {
 };
 const transporter = nodemailer.createTransport(emailConfig);
 
-// ========= Health =========
+// ======================= HEALTH =======================
 app.get('/api/health', async (_req, res) => {
   try {
     const r = await pool.query('SELECT NOW() as now');
@@ -103,19 +106,32 @@ app.get('/api/health', async (_req, res) => {
     res.json({ ok: true, db: 'disconnected', env: process.env.NODE_ENV || 'development' });
   }
 });
+app.get('/api/test', (_req, res) => res.json({ message: 'Backend läuft!', ts: new Date().toISOString() }));
 
-app.get('/api/test', (_req, res) => {
-  res.json({ message: 'Backend läuft!', timestamp: new Date().toISOString() });
+// ======================= AUTH (Kurzfassung) =======================
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { vorname, nachname, email, passwort } = req.body;
+    if (!vorname || !nachname || !email || !passwort) return res.status(400).json({ error: 'Alle Felder erforderlich' });
+    const pwErr = validatePassword(passwort);
+    if (pwErr.length) return res.status(400).json({ error: 'Passwort-Anforderungen nicht erfüllt', details: pwErr });
+
+    const exists = await pool.query('SELECT 1 FROM mitarbeiter WHERE LOWER(email)=LOWER($1)', [email]);
+    if (exists.rows.length) return res.status(400).json({ error: 'Benutzer existiert bereits' });
+
+    const passwort_hash = await hashPassword(passwort);
+    const r = await pool.query(
+      `INSERT INTO mitarbeiter (name, vorname, email, passwort_hash, telefonnummer, rolle)
+       VALUES ($1,$2,LOWER($3),$4,'','aussendienst')
+       RETURNING mitarbeiter_id, name, vorname, email, rolle`,
+      [nachname, vorname, email, passwort_hash]
+    );
+    res.status(201).json({ message: 'Registrierung erfolgreich', user: r.rows[0], accessToken: 'dev', refreshToken: 'dev' });
+  } catch (e) {
+    console.error('Register error:', e);
+    res.status(500).json({ error: 'Fehler bei der Registrierung' });
+  }
 });
-
-// ========= Auth: Login / Register / Passwortwechsel / Reset / MFA =========
-const validatePassword = (password) => {
-  const errors = [];
-  if (!password || password.length < 8) errors.push('Passwort muss mindestens 8 Zeichen lang sein');
-  if (!/[A-Z]/.test(password)) errors.push('Passwort muss mindestens einen Großbuchstaben enthalten');
-  if (!/[!@#$%^&*()_+=\[\]{}|;:,.<>?/~`-]/.test(password)) errors.push('Passwort muss mindestens ein Sonderzeichen enthalten');
-  return errors;
-};
 
 app.post('/api/auth/login', async (req, res) => {
   try {
@@ -123,11 +139,8 @@ app.post('/api/auth/login', async (req, res) => {
     if (!email || !passwort) return res.status(400).json({ error: 'E-Mail und Passwort erforderlich' });
 
     const q = await pool.query(
-      `SELECT mitarbeiter_id, name, vorname, email, rolle,
-              passwort_hash, mfa_enabled, failed_attempts, locked_until
-         FROM mitarbeiter
-        WHERE LOWER(email) = LOWER($1)`,
-      [email]
+      `SELECT mitarbeiter_id, name, vorname, email, rolle, passwort_hash, mfa_enabled, failed_attempts, locked_until
+       FROM mitarbeiter WHERE LOWER(email)=LOWER($1)`, [email]
     );
     if (!q.rows.length) return res.status(401).json({ error: 'Benutzer nicht gefunden' });
     const u = q.rows[0];
@@ -140,7 +153,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (!ok) {
       const attempts = Number(u.failed_attempts || 0) + 1;
       let lockedUntil = null;
-      if (attempts >= 5) lockedUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 Min
+      if (attempts >= 5) lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
       await pool.query(
         `UPDATE mitarbeiter SET failed_attempts=$1, locked_until=$2, updated_at=NOW() WHERE mitarbeiter_id=$3`,
         [attempts, lockedUntil, u.mitarbeiter_id]
@@ -149,351 +162,24 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     await pool.query(
-      `UPDATE mitarbeiter
-          SET failed_attempts=0, locked_until=NULL, last_login=NOW(), updated_at=NOW()
-        WHERE mitarbeiter_id=$1`,
+      `UPDATE mitarbeiter SET failed_attempts=0, locked_until=NULL, last_login=NOW(), updated_at=NOW() WHERE mitarbeiter_id=$1`,
       [u.mitarbeiter_id]
     );
 
-    if (u.mfa_enabled) {
-      return res.json({ status: 'MFA_REQUIRED', user_id: u.mitarbeiter_id, email: u.email });
-    }
+    if (u.mfa_enabled) return res.json({ status: 'MFA_REQUIRED', user_id: u.mitarbeiter_id, email: u.email });
 
     res.json({
       message: 'Login erfolgreich',
-      accessToken: 'dev-access-token',
-      refreshToken: 'dev-refresh-token',
-      user: {
-        id: u.mitarbeiter_id,
-        name: u.name,
-        vorname: u.vorname,
-        email: u.email,
-        rolle: u.rolle,
-        mfa_enabled: !!u.mfa_enabled,
-      },
+      accessToken: 'dev', refreshToken: 'dev',
+      user: { id: u.mitarbeiter_id, name: u.name, vorname: u.vorname, email: u.email, rolle: u.rolle, mfa_enabled: !!u.mfa_enabled }
     });
   } catch (e) {
-    console.error('Login Error:', e);
+    console.error('Login error:', e);
     res.status(500).json({ error: 'Fehler beim Login' });
   }
 });
 
-app.post('/api/auth/register', async (req, res) => {
-  try {
-    const { vorname, nachname, email, passwort } = req.body;
-    if (!vorname || !nachname || !email || !passwort) {
-      return res.status(400).json({ error: 'Alle Felder sind erforderlich' });
-    }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) return res.status(400).json({ error: 'Ungültiges E-Mail-Format' });
-
-    const passwordErrors = validatePassword(passwort);
-    if (passwordErrors.length > 0) {
-      return res.status(400).json({ error: 'Passwort-Anforderungen nicht erfüllt', details: passwordErrors });
-    }
-
-    const exists = await pool.query('SELECT 1 FROM mitarbeiter WHERE LOWER(email)=LOWER($1)', [email]);
-    if (exists.rows.length) return res.status(400).json({ error: 'Benutzer existiert bereits' });
-
-    const passwort_hash = await hashPassword(passwort);
-    const r = await pool.query(
-      `INSERT INTO mitarbeiter (name, vorname, email, passwort_hash, telefonnummer, rolle)
-       VALUES ($1,$2,LOWER($3),$4,'','aussendienst')
-       RETURNING mitarbeiter_id, name, vorname, email, rolle`,
-      [nachname, vorname, email, passwort_hash]
-    );
-
-    res.status(201).json({
-      message: 'Registrierung erfolgreich',
-      user: r.rows[0],
-      accessToken: 'dev-access-token',
-      refreshToken: 'dev-refresh-token',
-    });
-  } catch (e) {
-    console.error('Register Error:', e);
-    res.status(500).json({ error: 'Fehler bei der Registrierung' });
-  }
-});
-
-app.post('/api/auth/change-password', async (req, res) => {
-  try {
-    const { currentPassword, newPassword, user_id } = req.body;
-    if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Aktuelles und neues Passwort sind erforderlich' });
-    if (!user_id) return res.status(400).json({ error: 'Benutzer-ID ist erforderlich' });
-
-    const passwordErrors = validatePassword(newPassword);
-    if (passwordErrors.length > 0) {
-      return res.status(400).json({ error: 'Neues Passwort erfüllt nicht die Anforderungen', details: passwordErrors });
-    }
-
-    const userResult = await pool.query(
-      'SELECT mitarbeiter_id, email, passwort_hash FROM mitarbeiter WHERE mitarbeiter_id = $1',
-      [user_id]
-    );
-    if (!userResult.rows.length) return res.status(404).json({ error: 'Benutzer nicht gefunden' });
-
-    const user = userResult.rows[0];
-    const isValid = await verifyPassword(currentPassword, user.passwort_hash);
-    if (!isValid) return res.status(401).json({ error: 'Aktuelles Passwort ist falsch' });
-
-    const isSamePassword = await verifyPassword(newPassword, user.passwort_hash);
-    if (isSamePassword) return res.status(400).json({ error: 'Das neue Passwort muss sich vom aktuellen unterscheiden' });
-
-    const newHashedPassword = await hashPassword(newPassword);
-    await pool.query(
-      'UPDATE mitarbeiter SET passwort_hash = $1, updated_at = NOW() WHERE mitarbeiter_id = $2',
-      [newHashedPassword, user_id]
-    );
-
-    res.json({ message: 'Passwort erfolgreich geändert', timestamp: new Date().toISOString() });
-    console.log(`Password changed for user: ${user.email} at ${new Date().toISOString()}`);
-  } catch (error) {
-    console.error('Change password error:', error);
-    res.status(500).json({ error: 'Serverfehler beim Ändern des Passworts' });
-  }
-});
-
-// MFA
-app.post('/api/auth/mfa/setup/start', verifyToken, async (req, res) => {
-  try {
-    const { user_id } = req.body;
-    if (!user_id) return res.status(400).json({ error: 'user_id ist erforderlich' });
-
-    const u = await pool.query('SELECT email FROM mitarbeiter WHERE mitarbeiter_id=$1', [user_id]);
-    if (!u.rows.length) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
-    const email = u.rows[0].email;
-
-    const secret = speakeasy.generateSecret({
-      length: 20,
-      name: `${MFA_ISSUER}:${email}`,
-      issuer: MFA_ISSUER,
-    });
-
-    const otpauth = secret.otpauth_url || speakeasy.otpauthURL({
-      secret: secret.base32,
-      label: `${MFA_ISSUER}:${email}`,
-      issuer: MFA_ISSUER,
-      encoding: 'base32',
-    });
-
-    const qrDataUrl = await QRCode.toDataURL(otpauth);
-    await pool.query('UPDATE mitarbeiter SET mfa_temp_secret=$1 WHERE mitarbeiter_id=$2', [
-      secret.base32, user_id,
-    ]);
-
-    res.json({ otpauth, qrDataUrl, secret: secret.base32 });
-  } catch (e) {
-    console.error('MFA setup start error:', e);
-    res.status(500).json({ error: 'Fehler beim Starten des MFA-Setups' });
-  }
-});
-
-app.post('/api/auth/mfa/setup/verify', verifyToken, async (req, res) => {
-  const client = await pool.connect();
-  try {
-    const { user_id, token } = req.body;
-    if (!user_id || !token) return res.status(400).json({ error: 'user_id und token sind erforderlich' });
-
-    const r = await client.query('SELECT mfa_temp_secret FROM mitarbeiter WHERE mitarbeiter_id=$1', [user_id]);
-    if (!r.rows.length) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
-
-    const tempSecret = r.rows[0].mfa_temp_secret;
-    if (!tempSecret) return res.status(400).json({ error: 'Kein temporäres Secret vorhanden' });
-
-    const ok = speakeasy.totp.verify({
-      secret: tempSecret,
-      encoding: 'base32',
-      token: String(token),
-      window: 1,
-    });
-    if (!ok) return res.status(400).json({ error: 'Ungültiger Code' });
-
-    const backupCodes = generateBackupCodes();
-
-    await client.query('BEGIN');
-    await client.query(
-      `UPDATE mitarbeiter
-          SET mfa_secret=$1,
-              mfa_temp_secret=NULL,
-              mfa_enabled=true,
-              mfa_enrolled_at=NOW(),
-              mfa_backup_codes=$2
-        WHERE mitarbeiter_id=$3`,
-      [tempSecret, JSON.stringify(backupCodes), user_id]
-    );
-    await client.query('COMMIT');
-
-    res.json({ success: true, backup_codes: backupCodes });
-  } catch (e) {
-    await client.query('ROLLBACK');
-    console.error('MFA setup verify error:', e);
-    res.status(500).json({ error: 'Fehler beim Verifizieren des MFA-Setups' });
-  } finally {
-    client.release();
-  }
-});
-
-app.post('/api/auth/mfa/verify', async (req, res) => {
-  try {
-    const { user_id, token, backup_code } = req.body;
-    if (!user_id) return res.status(400).json({ error: 'user_id ist erforderlich' });
-
-    const r = await pool.query(
-      `SELECT mitarbeiter_id, name, vorname, email, rolle,
-              mfa_secret, mfa_enabled, mfa_backup_codes
-         FROM mitarbeiter
-        WHERE mitarbeiter_id=$1`,
-      [user_id]
-    );
-    if (!r.rows.length) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
-    const u = r.rows[0];
-    if (!u.mfa_enabled) return res.status(400).json({ error: 'MFA ist nicht aktiviert' });
-
-    let verified = false;
-
-    if (token) {
-      verified = speakeasy.totp.verify({
-        secret: u.mfa_secret,
-        encoding: 'base32',
-        token: String(token),
-        window: 1,
-      });
-    } else if (backup_code) {
-      let codes = [];
-      try {
-        codes = Array.isArray(u.mfa_backup_codes) ? u.mfa_backup_codes : JSON.parse(u.mfa_backup_codes || '[]');
-      } catch {
-        codes = [];
-      }
-      const idx = codes.findIndex((c) => c === backup_code);
-      if (idx >= 0) {
-        const newCodes = [...codes];
-        newCodes.splice(idx, 1);
-        await pool.query('UPDATE mitarbeiter SET mfa_backup_codes=$1 WHERE mitarbeiter_id=$2', [
-          JSON.stringify(newCodes), user_id,
-        ]);
-        verified = true;
-      }
-    }
-
-    if (!verified) return res.status(401).json({ error: 'MFA-Überprüfung fehlgeschlagen' });
-
-    res.json({
-      message: 'Login erfolgreich',
-      accessToken: 'dev-access-token',
-      refreshToken: 'dev-refresh-token',
-      user: {
-        id: u.mitarbeiter_id,
-        name: u.name,
-        vorname: u.vorname,
-        email: u.email,
-        rolle: u.rolle,
-        mfa_enabled: true,
-      },
-    });
-  } catch (e) {
-    console.error('MFA verify error:', e);
-    res.status(500).json({ error: 'Fehler bei MFA-Überprüfung' });
-  }
-});
-
-// Passwort-Reset
-app.post('/api/auth/forgot-password', async (req, res) => {
-  try {
-    const { email } = req.body;
-    if (!email) return res.status(400).json({ error: 'E-Mail ist erforderlich' });
-
-    const user = await pool.query(
-      'SELECT mitarbeiter_id, email, vorname FROM mitarbeiter WHERE LOWER(email)=LOWER($1)',
-      [email]
-    );
-
-    // Immer neutral antworten
-    if (!user.rows.length) {
-      return res.json({ message: 'Falls die E-Mail existiert, haben wir einen Reset-Link gesendet.' });
-    }
-
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const resetExpires = new Date(Date.now() + 60 * 60 * 1000);
-    await pool.query('UPDATE mitarbeiter SET reset_token=$1, reset_expires=$2 WHERE mitarbeiter_id=$3', [
-      resetToken, resetExpires, user.rows[0].mitarbeiter_id,
-    ]);
-
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
-
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM || emailConfig.auth.user,
-      to: email,
-      subject: 'Pauly Dashboard - Passwort zurücksetzen',
-      html: `
-        <h2>Passwort zurücksetzen</h2>
-        <p>Hallo ${user.rows[0].vorname || ''},</p>
-        <p>Hier ist dein Link zum Zurücksetzen:</p>
-        <p><a href="${resetUrl}">${resetUrl}</a></p>
-        <p>Gültig für 1 Stunde.</p>
-      `,
-    });
-
-    res.json({ message: 'Falls die E-Mail existiert, haben wir einen Reset-Link gesendet.' });
-  } catch (e) {
-    console.error('Forgot password error:', e);
-    res.status(500).json({ error: 'Fehler beim Senden der Reset-E-Mail' });
-  }
-});
-
-app.post('/api/auth/validate-reset-token', async (req, res) => {
-  try {
-    const { token } = req.body;
-    if (!token) return res.status(400).json({ error: 'Token ist erforderlich' });
-
-    const u = await pool.query(
-      'SELECT email, vorname FROM mitarbeiter WHERE reset_token=$1 AND reset_expires > NOW()',
-      [token]
-    );
-    if (!u.rows.length) return res.status(400).json({ error: 'Ungültiger oder abgelaufener Reset-Token' });
-
-    res.json({ valid: true, email: u.rows[0].email, name: u.rows[0].vorname });
-  } catch (e) {
-    console.error('Validate reset token error:', e);
-    res.status(500).json({ error: 'Fehler bei der Token-Validierung' });
-  }
-});
-
-app.post('/api/auth/reset-password', async (req, res) => {
-  try {
-    const { token, newPassword } = req.body;
-    if (!token || !newPassword) return res.status(400).json({ error: 'Token und neues Passwort sind erforderlich' });
-
-    const passwordErrors = validatePassword(newPassword);
-    if (passwordErrors.length > 0) {
-      return res.status(400).json({ error: 'Neues Passwort erfüllt nicht die Anforderungen', details: passwordErrors });
-    }
-
-    const u = await pool.query(
-      'SELECT mitarbeiter_id, email FROM mitarbeiter WHERE reset_token=$1 AND reset_expires > NOW()',
-      [token]
-    );
-    if (!u.rows.length) return res.status(400).json({ error: 'Ungültiger oder abgelaufener Reset-Token' });
-
-    const hash = await hashPassword(newPassword);
-    await pool.query(
-      `UPDATE mitarbeiter
-          SET passwort_hash=$1, reset_token=NULL, reset_expires=NULL, updated_at=NOW()
-        WHERE mitarbeiter_id=$2`,
-      [hash, u.rows[0].mitarbeiter_id]
-    );
-
-    res.json({ message: 'Passwort erfolgreich zurückgesetzt' });
-  } catch (e) {
-    console.error('Reset password error:', e);
-    res.status(500).json({ error: 'Fehler beim Zurücksetzen des Passworts' });
-  }
-});
-
-// ========= CUSTOMERS =========
-
-// Liste
+// ======================= CUSTOMERS =======================
 app.get('/api/customers', async (_req, res) => {
   try {
     const result = await pool.query(`
@@ -509,12 +195,11 @@ app.get('/api/customers', async (_req, res) => {
     `);
     res.json(result.rows);
   } catch (e) {
-    console.error('Customers Error:', e);
+    console.error('GET /api/customers error:', e);
     res.status(500).json({ error: 'Fehler beim Abrufen der Kunden' });
   }
 });
 
-// Einzelner Kunde
 app.get('/api/customers/:id(\\d+)', async (req, res) => {
   try {
     const kundenId = Number(req.params.id);
@@ -549,9 +234,7 @@ app.post('/api/customers', async (req, res) => {
       infrastructure_data // optional
     } = req.body;
 
-    if (!firmenname || !email) {
-      return res.status(400).json({ error: 'Firmenname und E-Mail sind Pflichtfelder' });
-    }
+    if (!firmenname || !email) return res.status(400).json({ error: 'Firmenname und E-Mail sind Pflichtfelder' });
 
     await client.query('BEGIN');
 
@@ -603,7 +286,6 @@ app.post('/api/customers', async (req, res) => {
 
       // Netzwerk (1:1)
       if (netzwerk && Object.keys(netzwerk).length) {
-        const n = netzwerk;
         await client.query(
           `INSERT INTO onboarding_network
              (onboarding_id, internetzugangsart, firewall_modell, feste_ip_vorhanden,
@@ -611,14 +293,14 @@ app.post('/api/customers', async (req, res) => {
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
           [
             onboardingId,
-            n.internetzugangsart || null,
-            n.firewall_modell || null,
-            !!n.feste_ip_vorhanden,
-            n.ip_adresse || null,
-            !!n.vpn_einwahl_erforderlich,
-            toNumberOrNull(n.aktuelle_vpn_user),
-            toNumberOrNull(n.geplante_vpn_user),
-            n.informationen || null,
+            netzwerk.internetzugangsart || null,
+            netzwerk.firewall_modell || null,
+            !!netzwerk.feste_ip_vorhanden,
+            netzwerk.ip_adresse || null,
+            !!netzwerk.vpn_einwahl_erforderlich,
+            toNumberOrNull(netzwerk.aktuelle_vpn_user),
+            toNumberOrNull(netzwerk.geplante_vpn_user),
+            netzwerk.informationen || null,
           ]
         );
       }
@@ -746,15 +428,17 @@ app.post('/api/customers', async (req, res) => {
     res.status(201).json({ message: 'Kunde wurde angelegt.', kunde: c.rows[0] });
   } catch (e) {
     await client.query('ROLLBACK');
-    console.error('Create customer (with infra) error:', e);
+    console.error('Create customer error:', e);
     res.status(500).json({ error: 'Fehler beim Erstellen des Kunden/Onboardings: ' + e.message });
   } finally {
     client.release();
   }
 });
 
-// ========= ONBOARDING =========
-// --- Onboarding-Projekte (Liste)
+// ======================= ONBOARDING =======================
+// !!! WICHTIG: Reihenfolge — Liste vor :id-Route !!!
+
+// Projekte-Liste
 app.get('/api/onboarding/projects', async (_req, res) => {
   try {
     const result = await pool.query(`
@@ -770,23 +454,18 @@ app.get('/api/onboarding/projects', async (_req, res) => {
         c.ort,
         COUNT(DISTINCT oh.hardware_id)::int AS hardware_count,
         COUNT(DISTINCT os.software_id)::int AS software_count,
-        COUNT(DISTINCT onw.network_id)::int AS network_count,
-        COUNT(DISTINCT om.mail_id)::int     AS mail_count,
-        COUNT(DISTINCT ob.backup_id)::int   AS backup_count,
         (COUNT(onw.network_id) > 0)         AS has_network
       FROM onboarding o
       LEFT JOIN customers            c   ON c.kunden_id      = o.kunde_id
       LEFT JOIN onboarding_hardware  oh  ON oh.onboarding_id = o.onboarding_id
       LEFT JOIN onboarding_software  os  ON os.onboarding_id = o.onboarding_id
       LEFT JOIN onboarding_network   onw ON onw.onboarding_id= o.onboarding_id
-      LEFT JOIN onboarding_mail      om  ON om.onboarding_id = o.onboarding_id
-      LEFT JOIN onboarding_backup    ob  ON ob.onboarding_id = o.onboarding_id
       GROUP BY o.onboarding_id, c.firmenname, c.email, c.plz, c.ort
       ORDER BY o.onboarding_id DESC
     `);
     res.json(result.rows);
   } catch (e) {
-    console.error('Onboarding projects error:', e);
+    console.error('GET /api/onboarding/projects error:', e);
     res.status(500).json({ error: 'Fehler beim Abrufen der Onboarding-Projekte' });
   }
 });
@@ -824,7 +503,7 @@ app.get('/api/onboarding/:id(\\d+)', async (req, res) => {
     if (!ob.rows.length) return res.status(404).json({ error: 'Onboarding nicht gefunden' });
 
     const [netz, hw, sw, mail, backup, sonst] = await Promise.all([
-      client.query(`SELECT * FROM onboarding_network WHERE onboarding_id=$1 LIMIT 1`, [id]),
+      client.query(`SELECT * FROM onboarding_network  WHERE onboarding_id=$1 LIMIT 1`, [id]),
       client.query(`SELECT * FROM onboarding_hardware WHERE onboarding_id=$1 ORDER BY hardware_id`, [id]),
       client.query(`
         SELECT s.*,
@@ -840,8 +519,8 @@ app.get('/api/onboarding/:id(\\d+)', async (req, res) => {
          WHERE s.onboarding_id = $1
          ORDER BY s.software_id
       `, [id]),
-      client.query(`SELECT * FROM onboarding_mail     WHERE onboarding_id=$1 LIMIT 1`, [id]),
-      client.query(`SELECT * FROM onboarding_backup   WHERE onboarding_id=$1 LIMIT 1`, [id]),
+      client.query(`SELECT * FROM onboarding_mail      WHERE onboarding_id=$1 LIMIT 1`, [id]),
+      client.query(`SELECT * FROM onboarding_backup    WHERE onboarding_id=$1 LIMIT 1`, [id]),
       client.query(`SELECT * FROM onboarding_sonstiges WHERE onboarding_id=$1 LIMIT 1`, [id]),
     ]);
 
@@ -1023,13 +702,19 @@ app.patch('/api/onboarding/:id(\\d+)', async (req, res) => {
   try {
     const id = Number(req.params.id);
     const root = req.body.infrastructure_data ?? req.body;
-    const { status, netzwerk, hardware, software, mail, backup, sonstiges } = root;
+    const { status, netzwerk, hardware, software, mail, backup, sonstiges, datum, mitarbeiter_id } = root;
 
     await client.query('BEGIN');
 
-    if (status) {
-      await client.query(`UPDATE onboarding SET status=$1, updated_at=NOW() WHERE onboarding_id=$2`, [status, id]);
-    }
+    await client.query(
+      `UPDATE onboarding
+         SET status = COALESCE($1, status),
+             datum = COALESCE($2, datum),
+             mitarbeiter_id = COALESCE($3, mitarbeiter_id),
+             updated_at = NOW()
+       WHERE onboarding_id=$4`,
+      [status ?? null, datum ?? null, mitarbeiter_id ?? null, id]
+    );
 
     // Netzwerk: UPDATE oder INSERT
     if (netzwerk) {
@@ -1041,15 +726,10 @@ app.patch('/api/onboarding/:id(\\d+)', async (req, res) => {
                 geplante_vpn_user=$7, informationen=$8, updated_at=NOW()
           WHERE onboarding_id=$9`,
         [
-          n.internetzugangsart ?? null,
-          n.firewall_modell ?? null,
-          toBool(n.feste_ip_vorhanden),
-          n.ip_adresse ?? null,
-          toBool(n.vpn_einwahl_erforderlich),
-          toNumberOrNull(n.aktuelle_vpn_user),
-          toNumberOrNull(n.geplante_vpn_user),
-          n.informationen ?? null,
-          id,
+          n.internetzugangsart ?? null, n.firewall_modell ?? null, toBool(n.feste_ip_vorhanden),
+          n.ip_adresse ?? null, toBool(n.vpn_einwahl_erforderlich),
+          toNumberOrNull(n.aktuelle_vpn_user), toNumberOrNull(n.geplante_vpn_user),
+          n.informationen ?? null, id
         ]
       );
       if (upd.rowCount === 0) {
@@ -1059,15 +739,9 @@ app.patch('/api/onboarding/:id(\\d+)', async (req, res) => {
               ip_adresse, vpn_einwahl_erforderlich, aktuelle_vpn_user, geplante_vpn_user, informationen)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
           [
-            id,
-            n.internetzugangsart ?? null,
-            n.firewall_modell ?? null,
-            toBool(n.feste_ip_vorhanden),
-            n.ip_adresse ?? null,
-            toBool(n.vpn_einwahl_erforderlich),
-            toNumberOrNull(n.aktuelle_vpn_user),
-            toNumberOrNull(n.geplante_vpn_user),
-            n.informationen ?? null,
+            id, n.internetzugangsart ?? null, n.firewall_modell ?? null, toBool(n.feste_ip_vorhanden),
+            n.ip_adresse ?? null, toBool(n.vpn_einwahl_erforderlich), toNumberOrNull(n.aktuelle_vpn_user),
+            toNumberOrNull(n.geplante_vpn_user), n.informationen ?? null
           ]
         );
       }
@@ -1086,12 +760,8 @@ app.patch('/api/onboarding/:id(\\d+)', async (req, res) => {
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
           [
             id,
-            hw.typ || null,
-            hw.hersteller || null,
-            hw.modell || null,
-            hw.seriennummer || null,
-            hw.standort || null,
-            hw.ip || null,
+            hw.typ || null, hw.hersteller || null, hw.modell || null, hw.seriennummer || null,
+            hw.standort || null, hw.ip || null,
             JSON.stringify(normalizeJSONB(hw.details_jsonb ?? hw.details)),
             hw.informationen || null,
           ]
@@ -1165,14 +835,9 @@ app.patch('/api/onboarding/:id(\\d+)', async (req, res) => {
                 pop3_connector=$5, mobiler_zugriff=$6, informationen=$7, updated_at=NOW()
           WHERE onboarding_id=$8`,
         [
-          m.anbieter ?? null,
-          toNumberOrNull(m.anzahl_postfach),
-          toNumberOrNull(m.anzahl_shared),
-          toNumberOrNull(m.gesamt_speicher),
-          toBool(m.pop3_connector),
-          toBool(m.mobiler_zugriff),
-          m.informationen ?? null,
-          id,
+          m.anbieter ?? null, toNumberOrNull(m.anzahl_postfach), toNumberOrNull(m.anzahl_shared),
+          toNumberOrNull(m.gesamt_speicher), toBool(m.pop3_connector), toBool(m.mobiler_zugriff),
+          m.informationen ?? null, id
         ]
       );
       if (upd.rowCount === 0) {
@@ -1182,14 +847,9 @@ app.patch('/api/onboarding/:id(\\d+)', async (req, res) => {
               pop3_connector, mobiler_zugriff, informationen)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
           [
-            id,
-            m.anbieter ?? null,
-            toNumberOrNull(m.anzahl_postfach),
-            toNumberOrNull(m.anzahl_shared),
-            toNumberOrNull(m.gesamt_speicher),
-            toBool(m.pop3_connector),
-            toBool(m.mobiler_zugriff),
-            m.informationen ?? null,
+            id, m.anbieter ?? null, toNumberOrNull(m.anzahl_postfach), toNumberOrNull(m.anzahl_shared),
+            toNumberOrNull(m.gesamt_speicher), toBool(m.pop3_connector), toBool(m.mobiler_zugriff),
+            m.informationen ?? null
           ]
         );
       }
@@ -1244,7 +904,7 @@ app.patch('/api/onboarding/:id(\\d+)/status', async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { status } = req.body || {};
-    const allowed = ['neu', 'in Arbeit', 'erledigt', 'offen']; // 'offen' falls noch im Umlauf
+    const allowed = ['neu', 'in Arbeit', 'erledigt', 'offen'];
     if (!allowed.includes(status)) return res.status(400).json({ error: 'Ungültiger Status' });
     const { rowCount } = await pool.query(
       `UPDATE onboarding SET status=$1, updated_at=NOW() WHERE onboarding_id=$2`,
@@ -1258,130 +918,17 @@ app.patch('/api/onboarding/:id(\\d+)/status', async (req, res) => {
   }
 });
 
-// Export eines Onboardings (JSON)
-app.get('/api/onboarding/:id(\\d+)/export', async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    const onboarding = await pool.query(`
-      SELECT o.*, c.*
-      FROM onboarding o
-      LEFT JOIN customers c ON c.kunden_id = o.kunde_id
-      WHERE o.onboarding_id = $1
-    `, [id]);
-    if (!onboarding.rows.length) return res.status(404).json({ error: 'Onboarding nicht gefunden' });
-
-    const [netzwerk, hardware, software, mail, backup, sonstiges] = await Promise.all([
-      pool.query('SELECT * FROM onboarding_network WHERE onboarding_id=$1', [id]),
-      pool.query('SELECT * FROM onboarding_hardware WHERE onboarding_id=$1 ORDER BY hardware_id', [id]),
-      pool.query(`
-        SELECT 
-          os.*,
-          COALESCE(
-            json_agg(
-              DISTINCT jsonb_build_object(
-                'requirement_id', osr.requirement_id,
-                'type', osr.type,
-                'detail', osr.detail
-              )
-            ) FILTER (WHERE osr.requirement_id IS NOT NULL),
-            '[]'
-          ) AS requirements,
-          COALESCE(
-            json_agg(
-              DISTINCT jsonb_build_object(
-                'app_id', osa.app_id,
-                'name', osa.name
-              )
-            ) FILTER (WHERE osa.app_id IS NOT NULL),
-            '[]'
-          ) AS apps
-        FROM onboarding_software os
-        LEFT JOIN onboarding_software_requirements osr ON osr.software_id = os.software_id
-        LEFT JOIN onboarding_software_apps osa ON osa.software_id = os.software_id
-        WHERE os.onboarding_id=$1
-        GROUP BY os.software_id
-        ORDER BY os.software_id
-      `, [id]),
-      pool.query('SELECT * FROM onboarding_mail WHERE onboarding_id=$1', [id]),
-      pool.query('SELECT * FROM onboarding_backup WHERE onboarding_id=$1', [id]),
-      pool.query('SELECT * FROM onboarding_sonstiges WHERE onboarding_id=$1', [id]),
-    ]);
-
-    const data = {
-      ...onboarding.rows[0],
-      netzwerk: netzwerk.rows[0] || null,
-      hardware: hardware.rows,
-      software: software.rows,
-      mail: mail.rows[0] || null,
-      backup: backup.rows[0] || null,
-      sonstiges: sonstiges.rows[0] || null,
-    };
-
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', `attachment; filename="onboarding-${id}.json"`);
-    res.send(JSON.stringify(data, null, 2));
-  } catch (e) {
-    console.error('Export onboarding error:', e);
-    res.status(500).json({ error: 'Fehler beim Exportieren des Onboardings' });
-  }
-});
-
-// ========= KALKULATIONEN (Tabellennamen gefixt) =========
-
-// Liste
-app.get('/api/kalkulationen', async (_req, res) => {
-  try {
-    const { rows } = await pool.query(`
-      SELECT k.*, c.firmenname,
-             COALESCE(SUM(p.anzahl * p.dauer_pro_einheit), 0) AS sum_hours
-        FROM kalkulationen k
-        JOIN customers c ON c.kunden_id = k.kunden_id
-   LEFT JOIN kalkulation_positionen p ON p.kalkulations_id = k.kalkulations_id
-    GROUP BY k.kalkulations_id, c.firmenname
-    ORDER BY k.datum DESC
-    `);
-    res.json(rows);
-  } catch (e) {
-    console.error('GET /api/kalkulationen error:', e);
-    res.status(500).json({ error: 'Fehler beim Abrufen der Kalkulationen' });
-  }
-});
-
-// Details
-app.get('/api/kalkulationen/:id(\\d+)', async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    const { rows: k } = await pool.query(
-      `SELECT k.*, c.firmenname FROM kalkulationen k
-        JOIN customers c ON c.kunden_id = k.kunden_id
-       WHERE k.kalkulations_id=$1`,
-      [id]
-    );
-    if (!k.length) return res.status(404).json({ error: 'Kalkulation nicht gefunden' });
-    const { rows: pos } = await pool.query(
-      `SELECT * FROM kalkulation_positionen WHERE kalkulations_id = $1 ORDER BY position_id`,
-      [id]
-    );
-    res.json({ ...k[0], positionen: pos });
-  } catch (e) {
-    console.error('GET /api/kalkulationen/:id error:', e);
-    res.status(500).json({ error: 'Fehler beim Abrufen der Kalkulation' });
-  }
-});
-
-// (Optional) einfache Stats – Kunden/Projekte zählen
-// ========= Dashboard-Stats =========
+// ======================= STATS (für Dashboard) =======================
 app.get('/api/kalkulationen/stats', async (_req, res) => {
   try {
     const [kundenQ, projekteQ, stundenQ] = await Promise.all([
       pool.query(`SELECT COUNT(*)::int AS cnt FROM customers`),
-      pool.query(`SELECT COUNT(*)::int AS cnt FROM onboarding`), // <-- Projekte = Onboardings
+      pool.query(`SELECT COUNT(*)::int AS cnt FROM onboarding`), // Projekte = Onboardings
       pool.query(`SELECT COALESCE(SUM(gesamtzeit),0)::float8 AS total_hours FROM kalkulationen`)
     ]);
-
     res.json({
       activeCustomers: Number(kundenQ.rows[0].cnt || 0),
-      runningProjects: Number(projekteQ.rows[0].cnt || 0), // <-- jetzt aus onboarding
+      runningProjects: Number(projekteQ.rows[0].cnt || 0),
       totalHours: Number(stundenQ.rows[0].total_hours || 0),
     });
   } catch (e) {
@@ -1390,13 +937,71 @@ app.get('/api/kalkulationen/stats', async (_req, res) => {
   }
 });
 
-// ========= 404 Fallback =========
+// Neue Kalkulation anlegen (Header + Positionen) und per Trigger neu berechnen
+app.post('/api/kalkulationen', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const body = req.body || {};
+    // akzeptiere beide Feldnamen (Frontend sendet aktuell kunde_id)
+    const kundenId = Number(body.kunden_id ?? body.kunde_id);
+    if (!kundenId) return res.status(400).json({ error: 'kunden_id/kunde_id ist erforderlich' });
+
+    const stdsatz = body.stundensatz == null ? 0 : Number(body.stundensatz) || 0;
+    const mwst = body.mwst == null ? (body.mwst_prozent == null ? 19 : Number(body.mwst_prozent) || 0) : Number(body.mwst) || 0;
+
+    const positionen = Array.isArray(body.dienstleistungen) ? body.dienstleistungen : [];
+
+    await client.query('BEGIN');
+
+    const { rows: [krow] } = await client.query(
+      `INSERT INTO kalkulationen (kunden_id, stundensatz, mwst_prozent)
+       VALUES ($1,$2,$3) RETURNING kalkulations_id, datum`,
+      [kundenId, stdsatz, mwst]
+    );
+    const kalkId = krow.kalkulations_id;
+
+    for (const p of positionen) {
+      await client.query(
+        `INSERT INTO kalkulation_positionen
+           (kalkulations_id, section, beschreibung, anzahl, dauer_pro_einheit, stundensatz, info)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [
+          kalkId,
+          p.section ?? null,
+          p.beschreibung ?? '',
+          Number(p.anzahl) || 0,
+          Number(p.dauer_pro_einheit) || 0,
+          p.stundensatz == null ? null : (Number(p.stundensatz) || 0),
+          p.info ?? null
+        ]
+      );
+    }
+
+    // Trigger rechnen automatisch neu
+    await client.query('COMMIT');
+
+    // optional: Details zurückgeben
+    const { rows: hdr } = await client.query(
+      `SELECT k.*, c.firmenname FROM kalkulationen k
+         JOIN customers c ON c.kunden_id = k.kunden_id
+        WHERE k.kalkulations_id = $1`, [kalkId]
+    );
+    res.status(201).json({ message: 'Kalkulation gespeichert', kalkulation: hdr[0], kalkulations_id: kalkId });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error('POST /api/kalkulationen error:', e);
+    res.status(500).json({ error: 'Fehler beim Anlegen der Kalkulation' });
+  } finally {
+    client.release();
+  }
+});
+
+// ======================= 404 =======================
 app.use((req, res) => {
   res.status(404).json({ error: `Route nicht gefunden: ${req.originalUrl}` });
 });
 
-// ========= Start =========
-const PORT = process.env.PORT || 3001;
+// ======================= START =======================
 app.listen(PORT, () => {
   console.log(`API listening on http://localhost:${PORT}`);
 });

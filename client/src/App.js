@@ -97,7 +97,7 @@ export default function App() {
           path="/profile/mfa"
           element={
             <RequireAuth>
-              <MFASetup user={user} accessToken={user?.token} onMFAEnabled={handleMFAEnabled} />
+              <MFASetup userInfo={user} accessToken={user?.accessToken} onMFAEnabled={handleMFAEnabled} />
             </RequireAuth>
           }
         />
