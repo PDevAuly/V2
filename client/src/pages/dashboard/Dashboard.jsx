@@ -166,7 +166,8 @@ export default function DashboardPage({ onLogout, userInfo }) {
                 stats={stats}
                 kalkulationen={kalkulationen}
                 onGoCustomers={() => setActive('customers')}
-                onGoProjects={() => setActive('projects')}   // << neu
+                onGoProjects={() => setActive('projects')}
+                onEdited={loadDashboardData}
               />
             )}
 

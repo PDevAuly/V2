@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Shield, Download, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { fetchJSON } from 'services/api'; // <- NEU: zentraler API-Wrapper
 
 export default function MFASetup({ userInfo: propUserInfo, accessToken: propAccessToken, onMFAEnabled }) {
   const navigate = useNavigate();
@@ -12,37 +13,36 @@ export default function MFASetup({ userInfo: propUserInfo, accessToken: propAcce
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [mfaSecret, setMfaSecret] = useState('');
-  
+
   // User-Daten aus verschiedenen Quellen laden
   const [userInfo, setUserInfo] = useState(() => {
-    return propUserInfo || 
-           JSON.parse(localStorage.getItem('currentUser') || 'null') ||
-           JSON.parse(localStorage.getItem('user') || 'null');
+    return (
+      propUserInfo ||
+      JSON.parse(localStorage.getItem('currentUser') || 'null') ||
+      JSON.parse(localStorage.getItem('user') || 'null')
+    );
   });
 
   useEffect(() => {
     console.log('MFASetup userInfo:', userInfo);
   }, [userInfo]);
 
-   const getAccessToken = () => {
-   const token = propAccessToken || localStorage.getItem('accessToken');
+  const getAccessToken = () => {
+    const token = propAccessToken || localStorage.getItem('accessToken');
     if (!token || token === 'fwhlwemwldung') {
-      // Token ist ungültig oder Platzhalter
       setError('Ungültiger Access-Token. Bitte loggen Sie sich erneut ein.');
       return null;
     }
     return token;
   };
 
-  // User-ID ermitteln (verbesserte Logik)
+  // User-ID ermitteln (robust)
   const getUserId = () => {
     if (!userInfo) return null;
-    
     const possibleIdFields = ['mitarbeiter_id', 'id', 'user_id', '_id', 'userId'];
     for (const field of possibleIdFields) {
       if (userInfo[field]) return userInfo[field];
     }
-    
     console.error('Keine User-ID gefunden in:', userInfo);
     return null;
   };
@@ -52,38 +52,25 @@ export default function MFASetup({ userInfo: propUserInfo, accessToken: propAcce
   const startMFASetup = async () => {
     setLoading(true);
     setError('');
-
     try {
       const token = getAccessToken();
       if (!token) return;
 
-      console.log('Starte MFA Setup für User-ID:', userId);
-
-      const response = await fetch('/api/auth/mfa/setup/start', {
+      // Wichtig: KEIN /api hier – fetchJSON hängt die Base /api an
+      const data = await fetchJSON('/auth/mfa/setup/start', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ user_id: userId })
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ user_id: userId }),
       });
 
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || `HTTP ${response.status}`);
-      }
-
-      if (!data.qrDataUrl) {
-        throw new Error('Keine QR-Code-Daten erhalten');
-      }
+      if (!data?.qrDataUrl) throw new Error('Keine QR-Code-Daten erhalten');
 
       setQrCode(data.qrDataUrl);
       setMfaSecret(data.secret || '');
       setStep('qr');
     } catch (err) {
       console.error('MFA Setup Start Fehler:', err);
-      setError(err.message || 'Ein Fehler ist aufgetreten');
+      setError(err?.message || 'Ein Fehler ist aufgetreten');
     } finally {
       setLoading(false);
     }
@@ -92,50 +79,37 @@ export default function MFASetup({ userInfo: propUserInfo, accessToken: propAcce
   const verifyMFA = async () => {
     setLoading(true);
     setError('');
-
     try {
       const token = getAccessToken();
       if (!token) return;
-      
-      const response = await fetch('/api/auth/mfa/setup/verify', {
+
+      const data = await fetchJSON('/auth/mfa/setup/verify', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           user_id: userId,
           token: verificationCode,
-          secret: mfaSecret // Falls benötigt
-        })
+          secret: mfaSecret, // falls Backend es erwartet
+        }),
       });
 
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Verifizierung fehlgeschlagen');
-      }
+      setBackupCodes(Array.isArray(data?.backup_codes) ? data.backup_codes : []);
 
-      setBackupCodes(data.backup_codes || []);
-      
-      // User-Info aktualisieren
+      // User-Info aktualisieren (einheitlich in beiden Keys)
       const updatedUser = { ...userInfo, mfa_enabled: true };
       setUserInfo(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
-      
-      // Auch in anderen möglichen Speicherorten aktualisieren
-      const globalUser = JSON.parse(localStorage.getItem('user') || 'null');
-      if (globalUser && globalUser.id === userInfo.id) {
-        localStorage.setItem('user', JSON.stringify({...globalUser, mfa_enabled: true}));
+      localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+
+      setStep('completed');
+      if (typeof onMFAEnabled === 'function') {
+        try {
+          onMFAEnabled(true);
+        } catch {}
       }
-      
-       setStep('completed');
- if (typeof onMFAEnabled === 'function') {
-try { onMFAEnabled(true); } catch {}
-}
     } catch (err) {
       console.error('MFA Verify Fehler:', err);
-      setError(err.message || 'Verifizierung fehlgeschlagen');
+      setError(err?.message || 'Verifizierung fehlgeschlagen');
     } finally {
       setLoading(false);
     }
@@ -144,9 +118,12 @@ try { onMFAEnabled(true); } catch {}
   const downloadBackupCodes = () => {
     const text = backupCodes.join('\n');
     const element = document.createElement('a');
-    const file = new Blob([`Pauly Dashboard MFA Backup Codes\n\n${text}\n\nDatum: ${new Date().toLocaleString('de-DE')}`], {
-      type: 'text/plain'
-    });
+    const file = new Blob(
+      [
+        `Pauly Dashboard MFA Backup Codes\n\n${text}\n\nDatum: ${new Date().toLocaleString('de-DE')}`,
+      ],
+      { type: 'text/plain' }
+    );
     element.href = URL.createObjectURL(file);
     element.download = `pauly-mfa-backup-codes.txt`;
     document.body.appendChild(element);
@@ -156,9 +133,10 @@ try { onMFAEnabled(true); } catch {}
 
   const copyBackupCodes = () => {
     const text = backupCodes.join('\n');
-    navigator.clipboard.writeText(text)
+    navigator.clipboard
+      .writeText(text)
       .then(() => alert('Backup-Codes in die Zwischenablage kopiert!'))
-      .catch(err => console.error('Kopieren fehlgeschlagen:', err));
+      .catch((err) => console.error('Kopieren fehlgeschlagen:', err));
   };
 
   // Early returns für Fehlerbehandlung
@@ -170,8 +148,8 @@ try { onMFAEnabled(true); } catch {}
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
             Bitte loggen Sie sich erneut ein.
           </p>
-          <button 
-            onClick={() => navigate('/login')} 
+          <button
+            onClick={() => navigate('/login')}
             className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
           >
             Zum Login
@@ -189,8 +167,8 @@ try { onMFAEnabled(true); } catch {}
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
             Technische Details: {JSON.stringify(userInfo)}
           </p>
-          <button 
-            onClick={() => navigate('/dashboard')} 
+          <button
+            onClick={() => navigate('/dashboard')}
             className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
           >
             Zurück zum Dashboard
@@ -204,7 +182,6 @@ try { onMFAEnabled(true); } catch {}
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="max-w-2xl mx-auto py-8 px-4">
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-          
           {/* Header */}
           <div className="p-6 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center space-x-4">
@@ -253,15 +230,13 @@ try { onMFAEnabled(true); } catch {}
                       Sie benötigen eine Authenticator-App auf Ihrem Smartphone:
                     </p>
                   </div>
-                  
+
                   <div className="grid grid-cols-2 gap-4">
-                    {[
-                      'Google Authenticator',
-                      'Microsoft Authenticator', 
-                      'Authy',
-                      '1Password'
-                    ].map(app => (
-                      <div key={app} className="p-3 border border-gray-200 dark:border-gray-600 rounded-md text-center">
+                    {['Google Authenticator', 'Microsoft Authenticator', 'Authy', '1Password'].map((app) => (
+                      <div
+                        key={app}
+                        className="p-3 border border-gray-200 dark:border-gray-600 rounded-md text-center"
+                      >
                         <p className="text-sm text-gray-700 dark:text-gray-300">{app}</p>
                       </div>
                     ))}
@@ -281,9 +256,7 @@ try { onMFAEnabled(true); } catch {}
               {step === 'qr' && (
                 <div className="space-y-6">
                   <div>
-                    <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
-                      QR-Code scannen
-                    </h2>
+                    <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">QR-Code scannen</h2>
                     <p className="text-gray-600 dark:text-gray-400">
                       Scannen Sie den Code mit Ihrer Authenticator-App oder geben Sie den Code manuell ein:
                     </p>
@@ -291,13 +264,13 @@ try { onMFAEnabled(true); } catch {}
 
                   <div className="flex flex-col items-center">
                     {qrCode && (
-                      <img 
-                        src={qrCode} 
-                        alt="MFA QR Code" 
+                      <img
+                        src={qrCode}
+                        alt="MFA QR Code"
                         className="w-48 h-48 border-2 border-gray-200 dark:border-gray-600 rounded-lg mb-4"
                       />
                     )}
-                    
+
                     {mfaSecret && (
                       <div className="bg-gray-100 dark:bg-gray-700 p-3 rounded-md text-center w-full max-w-xs">
                         <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Manueller Code:</p>
@@ -355,17 +328,18 @@ try { onMFAEnabled(true); } catch {}
                   </div>
 
                   <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-md p-4">
-                    <h3 className="font-medium text-yellow-800 dark:text-yellow-200 mb-2">
-                      Backup-Codes speichern
-                    </h3>
+                    <h3 className="font-medium text-yellow-800 dark:text-yellow-200 mb-2">Backup-Codes speichern</h3>
                     <p className="text-sm text-yellow-700 dark:text-yellow-300 mb-4">
-                      Diese Codes können Sie verwenden, falls Ihr Handy nicht verfügbar ist. 
+                      Diese Codes können Sie verwenden, falls Ihr Handy nicht verfügbar ist.
                       <strong> Bewahren Sie diese an einem sicheren Ort auf!</strong>
                     </p>
-                    
+
                     <div className="grid grid-cols-2 gap-2 mb-4">
                       {backupCodes.map((code, index) => (
-                        <code key={index} className="block p-2 bg-gray-100 dark:bg-gray-800 rounded text-center font-mono text-sm">
+                        <code
+                          key={index}
+                          className="block p-2 bg-gray-100 dark:bg-gray-800 rounded text-center font-mono text-sm"
+                        >
                           {code}
                         </code>
                       ))}

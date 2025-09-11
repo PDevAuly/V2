@@ -14,7 +14,7 @@ const nodemailer = require('nodemailer');
 
 const app = express();
 const isProd = process.env.NODE_ENV === 'production';
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 5000;
 
 // ======================= MIDDLEWARE =======================
 const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || '')
@@ -785,53 +785,38 @@ app.patch('/api/onboarding/:id(\\d+)', async (req, res) => {
       `INSERT INTO onboarding_software (
          onboarding_id, name, licenses, critical, description, virenschutz, schnittstellen,
          wartungsvertrag, migration_support, verwendete_applikationen_text
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-       RETURNING software_id`,
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING software_id`,
       [
         id,
-        s.name ?? null,
+        s.name || null,
         toNumberOrNull(s.licenses),
-        s.critical ?? null,
-        s.description ?? null,
-        s.virenschutz ?? null,
-        s.schnittstellen ?? null,
+        s.critical || null,
+        s.description || null,
+        s.virenschutz || null,
+        s.schnittstellen || null,
         toBool(s.wartungsvertrag),
         toBool(s.migration_support),
-        s.verwendete_applikationen_text ?? null,
+        s.verwendete_applikationen_text || null,
       ]
     );
     const softwareId = ins.software_id;
 
-    // Requirements (optional)
-    const reqs = Array.isArray(s.requirements) ? s.requirements : [];
-    for (const r of reqs) {
-      await client.query(
-        `INSERT INTO onboarding_software_requirements (software_id, type, detail)
-         VALUES ($1,$2,$3)`,
-        [softwareId, r?.type ?? null, r?.detail ?? null]
-      );
+    if (Array.isArray(s.requirements)) {
+      for (const r of s.requirements) {
+        await client.query(
+          `INSERT INTO onboarding_software_requirements (software_id, type, detail) VALUES ($1,$2,$3)`,
+          [softwareId, r.type || null, r.detail || null]
+        );
+      }
     }
 
-    // Apps: akzeptiert s.apps (Array aus Strings/Objekten), s.verwendete_applikationen (Array)
-    // oder s.verwendete_applikationen_text (Zeilenweise)
-    let apps = [];
     if (Array.isArray(s.apps)) {
-      apps = s.apps;
-    } else if (Array.isArray(s.verwendete_applikationen)) {
-      apps = s.verwendete_applikationen;
-    } else if (s.verwendete_applikationen_text) {
-      apps = String(s.verwendete_applikationen_text)
-        .split('\n')
-        .map(x => x.trim())
-        .filter(Boolean);
-    }
-
-    for (const a of apps) {
-      await client.query(
-        `INSERT INTO onboarding_software_apps (software_id, name)
-         VALUES ($1,$2)`,
-        [softwareId, (typeof a === 'string' ? a : (a?.name ?? null))]
-      );
+      for (const a of s.apps) {
+        await client.query(
+          `INSERT INTO onboarding_software_apps (software_id, name) VALUES ($1,$2)`,
+          [softwareId, a.name || a]
+        );
+      }
     }
   }
 }
@@ -876,8 +861,7 @@ app.patch('/api/onboarding/:id(\\d+)', async (req, res) => {
       );
       if (upd.rowCount === 0) {
         await client.query(
-          `INSERT INTO onboarding_backup
-             (onboarding_id, tool, interval, retention, location, size, info)
+          `INSERT INTO onboarding_backup (onboarding_id, tool, interval, retention, location, size, info)
            VALUES ($1,$2,$3,$4,$5,$6,$7)`,
           [id, b.tool ?? null, b.interval ?? null, b.retention ?? null, b.location ?? null, toNumberOrNull(b.size), b.info ?? null]
         );
@@ -886,20 +870,21 @@ app.patch('/api/onboarding/:id(\\d+)', async (req, res) => {
 
     // Sonstiges: UPDATE oder INSERT
     if (sonstiges) {
+      const s = sonstiges;
       const upd = await client.query(
-        'UPDATE onboarding_sonstiges SET text=$1, updated_at=NOW() WHERE onboarding_id=$2',
-        [sonstiges.text || '', id]
+        `UPDATE onboarding_sonstiges SET text=$1, updated_at=NOW() WHERE onboarding_id=$2`,
+        [s.text ?? s.informationen ?? null, id]
       );
       if (upd.rowCount === 0) {
         await client.query(
-          'INSERT INTO onboarding_sonstiges (onboarding_id, text) VALUES ($1,$2)',
-          [id, sonstiges.text || '']
+          `INSERT INTO onboarding_sonstiges (onboarding_id, text) VALUES ($1,$2)`,
+          [id, s.text ?? s.informationen ?? null]
         );
       }
     }
 
     await client.query('COMMIT');
-    res.json({ message: 'Onboarding aktualisiert', onboarding_id: id });
+    res.json({ message: 'Onboarding aktualisiert' });
   } catch (e) {
     await client.query('ROLLBACK');
     console.error('PATCH /api/onboarding/:id error:', e);
@@ -909,31 +894,51 @@ app.patch('/api/onboarding/:id(\\d+)', async (req, res) => {
   }
 });
 
-// Nur Status ändern
-app.patch('/api/onboarding/:id(\\d+)/status', async (req, res) => {
+// Löschen
+app.delete('/api/onboarding/:id(\\d+)', async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { status } = req.body || {};
-    const allowed = ['neu', 'in Arbeit', 'erledigt', 'offen'];
-    if (!allowed.includes(status)) return res.status(400).json({ error: 'Ungültiger Status' });
     const { rowCount } = await pool.query(
-      `UPDATE onboarding SET status=$1, updated_at=NOW() WHERE onboarding_id=$2`,
-      [status, id]
+      `DELETE FROM onboarding WHERE onboarding_id = $1`,
+      [id]
     );
     if (!rowCount) return res.status(404).json({ error: 'Onboarding nicht gefunden' });
-    res.json({ message: 'Status aktualisiert' });
+    res.json({ message: 'Onboarding gelöscht' });
   } catch (e) {
-    console.error('PATCH /api/onboarding/:id/status error:', e);
-    res.status(500).json({ error: 'Fehler beim Aktualisieren des Status' });
+    console.error('DELETE /api/onboarding/:id error:', e);
+    res.status(500).json({ error: 'Fehler beim Löschen des Onboardings' });
   }
 });
 
-// ======================= STATS (für Dashboard) =======================
+// ====== KALKULATIONEN =================================================
+
+// Helper: Hole berechnete Header (inkl. Netto/MwSt/Brutto) + Kundenname
+async function getCalcWithTotalsById(id) {
+  const { rows } = await pool.query(
+    `
+    SELECT k.kalkulations_id, k.kunden_id, k.datum, k.stundensatz, k.mwst_prozent,
+           k.gesamtzeit, k.gesamtpreis, k.status, k.created_at, k.updated_at,
+           c.firmenname,
+           v.sum_netto::numeric(12,2)  AS sum_netto,
+           v.sum_mwst::numeric(12,2)   AS sum_mwst,
+           v.sum_brutto::numeric(12,2) AS sum_brutto
+    FROM kalkulationen k
+    JOIN customers c ON c.kunden_id = k.kunden_id
+    JOIN v_kalkulationen_berechnet v ON v.kalkulations_id = k.kalkulations_id
+    WHERE k.kalkulations_id = $1
+    `,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+// --- Stats für die Übersicht (Customers/Projects/Hours) ----------------
+// (Kompatibel zu Overview: activeCustomers, runningProjects, totalHours)
 app.get('/api/kalkulationen/stats', async (_req, res) => {
   try {
     const [kundenQ, projekteQ, stundenQ] = await Promise.all([
       pool.query(`SELECT COUNT(*)::int AS cnt FROM customers`),
-      pool.query(`SELECT COUNT(*)::int AS cnt FROM onboarding`), // Projekte = Onboardings
+      pool.query(`SELECT COUNT(*)::int AS cnt FROM onboarding`),
       pool.query(`SELECT COALESCE(SUM(gesamtzeit),0)::float8 AS total_hours FROM kalkulationen`)
     ]);
     res.json({
@@ -947,58 +952,116 @@ app.get('/api/kalkulationen/stats', async (_req, res) => {
   }
 });
 
-// Neue Kalkulation anlegen (Header + Positionen) und per Trigger neu berechnen
+// --- Liste: letzte 20 Kalkulationen -----------------------------------
+app.get('/api/kalkulationen', async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 20, 100);
+    const { rows } = await pool.query(
+      `
+      SELECT k.kalkulations_id, k.kunden_id, c.firmenname,
+             k.datum, k.status,
+             v.sum_netto::numeric(12,2)  AS sum_netto,
+             v.sum_mwst::numeric(12,2)   AS sum_mwst,
+             v.sum_brutto::numeric(12,2) AS sum_brutto,
+             k.gesamtzeit, k.gesamtpreis
+      FROM kalkulationen k
+      JOIN customers c ON c.kunden_id = k.kunden_id
+      JOIN v_kalkulationen_berechnet v ON v.kalkulations_id = k.kalkulations_id
+      ORDER BY k.datum DESC, k.kalkulations_id DESC
+      LIMIT $1
+      `,
+      [limit]
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error('GET /api/kalkulationen error:', e);
+    res.status(500).json({ error: 'Fehler beim Laden der Kalkulationen' });
+  }
+});
+
+// --- Detail: Header + Positionen + Summen ------------------------------
+app.get('/api/kalkulationen/:id(\\d+)', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const header = await getCalcWithTotalsById(id);
+    if (!header) return res.status(404).json({ error: 'Kalkulation nicht gefunden' });
+
+    const { rows: pos } = await pool.query(
+      `
+      SELECT position_id, kalkulations_id, section, beschreibung,
+             anzahl, dauer_pro_einheit, stundensatz, info,
+             created_at, updated_at
+      FROM kalkulation_positionen
+      WHERE kalkulations_id = $1
+      ORDER BY position_id ASC
+      `,
+      [id]
+    );
+
+    res.json({ header, positionen: pos });
+  } catch (e) {
+    console.error('GET /api/kalkulationen/:id error:', e);
+    res.status(500).json({ error: 'Fehler beim Laden der Kalkulation' });
+  }
+});
+
+// --- Anlegen: Header + Positionen (TX) ---------------------------------
 app.post('/api/kalkulationen', async (req, res) => {
   const client = await pool.connect();
   try {
     const body = req.body || {};
-    // akzeptiere beide Feldnamen (Frontend sendet aktuell kunde_id)
+
+    // Frontend sendet kunde_id (string/number), stundensatz optional/null, mwst und dienstleistungen[]
+    // siehe CalculationSection.jsx handleSubmit() :contentReference[oaicite:3]{index=3}
     const kundenId = Number(body.kunden_id ?? body.kunde_id);
-    if (!kundenId) return res.status(400).json({ error: 'kunden_id/kunde_id ist erforderlich' });
+    if (!kundenId) return res.status(400).json({ error: 'kunde_id ist erforderlich' });
 
-    const stdsatz = body.stundensatz == null ? 0 : Number(body.stundensatz) || 0;
-    const mwst = body.mwst == null ? (body.mwst_prozent == null ? 19 : Number(body.mwst_prozent) || 0) : Number(body.mwst) || 0;
+    const stdsatz = body.stundensatz == null ? null : (Number(body.stundensatz) || 0);
+    const mwst = body.mwst == null ? 19 : (Number(body.mwst) || 0);
 
-    const positionen = Array.isArray(body.dienstleistungen) ? body.dienstleistungen : [];
+    const items = Array.isArray(body.dienstleistungen) ? body.dienstleistungen : [];
+    if (items.length === 0) return res.status(400).json({ error: 'dienstleistungen darf nicht leer sein' });
 
     await client.query('BEGIN');
 
-    const { rows: [krow] } = await client.query(
-      `INSERT INTO kalkulationen (kunden_id, stundensatz, mwst_prozent)
-       VALUES ($1,$2,$3) RETURNING kalkulations_id, datum`,
+    // Header
+    const { rows: hdrRows } = await client.query(
+      `
+      INSERT INTO kalkulationen (kunden_id, stundensatz, mwst_prozent, status)
+      VALUES ($1, $2, $3, 'neu')
+      RETURNING kalkulations_id
+      `,
       [kundenId, stdsatz, mwst]
     );
-    const kalkId = krow.kalkulations_id;
+    const kalkId = hdrRows[0].kalkulations_id;
 
-    for (const p of positionen) {
+    // Positionen
+    for (const r of items) {
       await client.query(
-        `INSERT INTO kalkulation_positionen
-           (kalkulations_id, section, beschreibung, anzahl, dauer_pro_einheit, stundensatz, info)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        `
+        INSERT INTO kalkulation_positionen
+          (kalkulations_id, section, beschreibung, anzahl, dauer_pro_einheit, stundensatz, info)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)
+        `,
         [
           kalkId,
-          p.section ?? null,
-          p.beschreibung ?? '',
-          Number(p.anzahl) || 0,
-          Number(p.dauer_pro_einheit) || 0,
-          p.stundensatz == null ? null : (Number(p.stundensatz) || 0),
-          p.info ?? null
+          r.section || null,
+          String(r.beschreibung || '').trim(),
+          Number(r.anzahl) || 0,
+          Number(r.dauer_pro_einheit) || 0,
+          r.stundensatz == null ? null : (Number(r.stundensatz) || 0),
+          (r.info ?? null),
         ]
       );
     }
 
-    // Trigger rechnen automatisch neu
-    await client.query('COMMIT');
+    // Trigger berechnen automatisch; wir holen den finalen Stand ab
+    const header = await getCalcWithTotalsById(kalkId);
 
-    // optional: Details zurückgeben
-    const { rows: hdr } = await client.query(
-      `SELECT k.*, c.firmenname FROM kalkulationen k
-         JOIN customers c ON c.kunden_id = k.kunden_id
-        WHERE k.kalkulations_id = $1`, [kalkId]
-    );
-    res.status(201).json({ message: 'Kalkulation gespeichert', kalkulation: hdr[0], kalkulations_id: kalkId });
+    await client.query('COMMIT');
+    res.status(201).json({ message: 'Kalkulation angelegt', kalkulations_id: kalkId, header });
   } catch (e) {
-    await client.query('ROLLBACK');
+    await pool.query('ROLLBACK');
     console.error('POST /api/kalkulationen error:', e);
     res.status(500).json({ error: 'Fehler beim Anlegen der Kalkulation' });
   } finally {
@@ -1006,12 +1069,88 @@ app.post('/api/kalkulationen', async (req, res) => {
   }
 });
 
-// ======================= 404 =======================
-app.use((req, res) => {
-  res.status(404).json({ error: `Route nicht gefunden: ${req.originalUrl}` });
+// --- Updaten (optional): Header-Felder + Positionen ersetzend ----------
+// Erwartet optional: { stundensatz, mwst, status, dienstleistungen[] }
+app.patch('/api/kalkulationen/:id(\\d+)', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const id = Number(req.params.id);
+    const body = req.body || {};
+    await client.query('BEGIN');
+
+    if (body.stundensatz != null || body.mwst != null || body.status != null) {
+      await client.query(
+        `
+        UPDATE kalkulationen
+           SET stundensatz = COALESCE($1, stundensatz),
+               mwst_prozent = COALESCE($2, mwst_prozent),
+               status = COALESCE($3, status),
+               updated_at = NOW()
+         WHERE kalkulations_id = $4
+        `,
+        [
+          body.stundensatz == null ? null : (Number(body.stundensatz) || 0),
+          body.mwst == null ? null : (Number(body.mwst) || 0),
+          body.status || null,
+          id
+        ]
+      );
+    }
+
+    if (Array.isArray(body.dienstleistungen)) {
+      // Einfacher Ansatz: Positionen komplett ersetzen
+      await client.query(`DELETE FROM kalkulation_positionen WHERE kalkulations_id = $1`, [id]);
+
+      for (const r of body.dienstleistungen) {
+        await client.query(
+          `
+          INSERT INTO kalkulation_positionen
+            (kalkulations_id, section, beschreibung, anzahl, dauer_pro_einheit, stundensatz, info)
+          VALUES ($1,$2,$3,$4,$5,$6,$7)
+          `,
+          [
+            id,
+            r.section || null,
+            String(r.beschreibung || '').trim(),
+            Number(r.anzahl) || 0,
+            Number(r.dauer_pro_einheit) || 0,
+            r.stundensatz == null ? null : (Number(r.stundensatz) || 0),
+            (r.info ?? null),
+          ]
+        );
+      }
+    }
+
+    const header = await getCalcWithTotalsById(id);
+
+    await client.query('COMMIT');
+    res.json({ message: 'Kalkulation aktualisiert', header });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error('PATCH /api/kalkulationen/:id error:', e);
+    res.status(500).json({ error: 'Fehler beim Aktualisieren der Kalkulation' });
+  } finally {
+    client.release();
+  }
+});
+
+// --- Löschen -----------------------------------------------------------
+app.delete('/api/kalkulationen/:id(\\d+)', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { rowCount } = await pool.query(
+      `DELETE FROM kalkulationen WHERE kalkulations_id = $1`,
+      [id]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'Kalkulation nicht gefunden' });
+    res.json({ message: 'Kalkulation gelöscht' });
+  } catch (e) {
+    console.error('DELETE /api/kalkulationen/:id error:', e);
+    res.status(500).json({ error: 'Fehler beim Löschen der Kalkulation' });
+  }
 });
 
 // ======================= START =======================
 app.listen(PORT, () => {
-  console.log(`API listening on http://localhost:${PORT}`);
+  console.log(`Server läuft auf Port ${PORT} (${isProd ? 'PROD' : 'DEV'})`);
 });

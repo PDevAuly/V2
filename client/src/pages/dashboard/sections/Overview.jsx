@@ -1,16 +1,19 @@
-import React from 'react';
-import { User, Clock, TrendingUp, ChevronRight, Briefcase } from 'lucide-react';
+import React, { useState } from 'react';
+import { User, Clock, TrendingUp, ChevronRight, Briefcase, Edit3 } from 'lucide-react';
 import { euro, statusBadgeClass } from 'utils/format';
+import CalculationEditModal from 'features/kalkulation/CalculationEditModal';
 
-export default function Overview({ stats = {}, kalkulationen = [], onGoCustomers, onGoProjects }) {
+export default function Overview({ stats = {}, kalkulationen = [], onGoCustomers, onGoProjects, onEdited }) {
+  const [editId, setEditId] = useState(null);
+
   const safeStats = {
     activeCustomers: stats.activeCustomers ?? 0,
     runningProjects: stats.runningProjects ?? 0,
     totalHours: stats.totalHours ?? 0,
   };
 
-  console.log('🔍 Debug Overview - stats:', stats);           // NEU
-  console.log('🔍 Debug Overview - safeStats:', safeStats);  // NEU
+  console.log('🔍 Debug Overview - stats:', stats);
+  console.log('🔍 Debug Overview - safeStats:', safeStats);
   const list = Array.isArray(kalkulationen) ? kalkulationen : [];
 
   return (
@@ -78,7 +81,7 @@ export default function Overview({ stats = {}, kalkulationen = [], onGoCustomers
           <table className="w-full">
             <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
               <tr>
-                {['Kunde', 'Datum', 'Stunden', 'Gesamtpreis€', 'Status'].map((h) => (
+                {['Kunde', 'Datum', 'Stunden', 'Gesamtpreis€', 'Status', 'Aktion'].map((h) => (
                   <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                     {h}
                   </th>
@@ -89,7 +92,7 @@ export default function Overview({ stats = {}, kalkulationen = [], onGoCustomers
               {list.slice(0, 5).map((k, idx) => (
                 <tr key={k.kalkulations_id ?? `${k.kunde_id ?? 'k'}-${k.datum ?? 'd'}-${idx}`} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm font-medium text-gray-90 dark:text-gray-100">
+                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
                       {k.kunde_name || k.firmenname || '—'}
                     </span>
                   </td>
@@ -109,11 +112,20 @@ export default function Overview({ stats = {}, kalkulationen = [], onGoCustomers
                       {k.status || 'neu'}
                     </span>
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <button
+                      onClick={() => setEditId(k.kalkulations_id)}
+                      className="inline-flex items-center px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800"
+                      title="Bearbeiten"
+                    >
+                      <Edit3 className="w-4 h-4 mr-1" /> Bearbeiten
+                    </button>
+                  </td>
                 </tr>
               ))}
               {list.length === 0 && (
                 <tr>
-                  <td colSpan="5" className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                  <td colSpan="6" className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
                     Keine Kalkulationen vorhanden.
                   </td>
                 </tr>
@@ -122,6 +134,15 @@ export default function Overview({ stats = {}, kalkulationen = [], onGoCustomers
           </table>
         </div>
       </div>
+
+      {editId != null && (
+        <CalculationEditModal
+          open={true}
+          kalkId={editId}
+          onClose={() => setEditId(null)}
+          onSaved={onEdited}
+        />
+      )}
     </div>
   );
 }
