@@ -58,11 +58,13 @@ export default function MFASetup({ userInfo: propUserInfo, accessToken: propAcce
 
       // Wichtig: KEIN /api hier – fetchJSON hängt die Base /api an
       const data = await fetchJSON('/auth/mfa/setup/start', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ user_id: userId }),
-      });
-
+   method: 'POST',
+   headers: {
+     'Content-Type': 'application/json',
+     Authorization: `Bearer ${token}`,
+   },
+   body: JSON.stringify({ user_id: userId }),
+ });
       if (!data?.qrDataUrl) throw new Error('Keine QR-Code-Daten erhalten');
 
       setQrCode(data.qrDataUrl);
@@ -84,14 +86,13 @@ export default function MFASetup({ userInfo: propUserInfo, accessToken: propAcce
       if (!token) return;
 
       const data = await fetchJSON('/auth/mfa/setup/verify', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          user_id: userId,
-          token: verificationCode,
-          secret: mfaSecret, // falls Backend es erwartet
-        }),
-      });
+   method: 'POST',
+   headers: {
+     'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+   },
+   body: JSON.stringify({ user_id: userId, token: verificationCode, secret: mfaSecret }),
+ });
 
       setBackupCodes(Array.isArray(data?.backup_codes) ? data.backup_codes : []);
 

@@ -179,6 +179,150 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// === MFA: Setup starten (QR-Code erzeugen) ==============================
+app.post('/api/auth/mfa/setup/start', verifyToken, async (req, res) => {
+  try {
+    const userId = Number(req.body.user_id);
+    if (!userId) return res.status(400).json({ error: 'user_id fehlt' });
+
+    const { rows } = await pool.query(
+      `SELECT email, mfa_enabled FROM mitarbeiter WHERE mitarbeiter_id=$1`,
+      [userId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'User nicht gefunden' });
+
+    const email = rows[0].email;
+
+    // Secret erzeugen und temporär speichern
+    const secret = speakeasy.generateSecret({
+      length: 20,
+      name: `${MFA_ISSUER} (${email})`,
+    });
+    await pool.query(
+      `UPDATE mitarbeiter SET mfa_temp_secret=$1, updated_at=NOW() WHERE mitarbeiter_id=$2`,
+      [secret.base32, userId]
+    );
+
+    // otpauth URL + QR als DataURL
+    const otpauth =
+      secret.otpauth_url ||
+      `otpauth://totp/${encodeURIComponent(MFA_ISSUER)}:${encodeURIComponent(email)}?secret=${secret.base32}&issuer=${encodeURIComponent(MFA_ISSUER)}&algorithm=SHA1&digits=6&period=30`;
+    const qrDataUrl = await QRCode.toDataURL(otpauth);
+
+    res.json({ qrDataUrl, secret: secret.base32 });
+  } catch (e) {
+    console.error('MFA setup/start error:', e);
+    res.status(500).json({ error: 'Fehler beim MFA-Setup-Start' });
+  }
+});
+
+// === MFA: Setup verifizieren (Code prüfen, aktivieren) ==================
+app.post('/api/auth/mfa/setup/verify', verifyToken, async (req, res) => {
+  try {
+    const { user_id, token } = req.body;
+    const userId = Number(user_id);
+    if (!userId || !token) return res.status(400).json({ error: 'user_id oder token fehlt' });
+
+    const { rows } = await pool.query(
+      `SELECT mfa_temp_secret FROM mitarbeiter WHERE mitarbeiter_id=$1`,
+      [userId]
+    );
+    const temp = rows[0]?.mfa_temp_secret;
+    if (!temp) return res.status(400).json({ error: 'Kein offenes MFA-Setup' });
+
+    const ok = speakeasy.totp.verify({
+      secret: String(temp),
+      encoding: 'base32',
+      token: String(token),
+      window: 1,
+    });
+    if (!ok) return res.status(400).json({ error: 'Code ungültig' });
+
+    const backupCodes = generateBackupCodes(8);
+    await pool.query(
+      `UPDATE mitarbeiter
+         SET mfa_secret=$1,
+             mfa_temp_secret=NULL,
+             mfa_enabled=TRUE,
+             mfa_enrolled_at=NOW(),
+             mfa_backup_codes=$2,
+             updated_at=NOW()
+       WHERE mitarbeiter_id=$3`,
+      [temp, JSON.stringify(backupCodes), userId]
+    );
+
+    res.json({ message: 'MFA aktiviert', backup_codes: backupCodes });
+  } catch (e) {
+    console.error('MFA setup/verify error:', e);
+    res.status(500).json({ error: 'Fehler bei der MFA-Verifizierung' });
+  }
+});
+
+// === MFA: Login-Verifizierung (2. Schritt nach /auth/login) ============
+app.post('/api/auth/mfa/verify', async (req, res) => {
+  try {
+    const { user_id, token } = req.body;
+    const userId = Number(user_id);
+    if (!userId || !token) return res.status(400).json({ error: 'user_id oder token fehlt' });
+
+    const { rows } = await pool.query(
+      `SELECT mitarbeiter_id, name, vorname, email, rolle, mfa_secret, mfa_backup_codes
+         FROM mitarbeiter WHERE mitarbeiter_id=$1`,
+      [userId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'User nicht gefunden' });
+
+    const u = rows[0];
+    let ok = false;
+
+    // 1) TOTP prüfen
+    if (u.mfa_secret) {
+      ok = speakeasy.totp.verify({
+        secret: String(u.mfa_secret),
+        encoding: 'base32',
+        token: String(token),
+        window: 1,
+      });
+    }
+
+    // 2) Fallback: Backup-Code akzeptieren und danach entfernen
+    if (!ok && Array.isArray(u.mfa_backup_codes)) {
+      const t = String(token).toUpperCase().trim();
+      const list = u.mfa_backup_codes.map(String);
+      const idx = list.findIndex((c) => c.toUpperCase() === t);
+      if (idx >= 0) {
+        ok = true;
+        list.splice(idx, 1);
+        await pool.query(
+          `UPDATE mitarbeiter SET mfa_backup_codes=$1, updated_at=NOW() WHERE mitarbeiter_id=$2`,
+          [JSON.stringify(list), userId]
+        );
+      }
+    }
+
+    if (!ok) return res.status(401).json({ error: 'MFA-Code ungültig' });
+
+    // „Login“ abschließen (du nutzt aktuell Placebo-Tokens)
+    res.json({
+      message: 'Login erfolgreich',
+      accessToken: 'dev',
+      refreshToken: 'dev',
+      user: {
+        id: u.mitarbeiter_id,
+        name: u.name,
+        vorname: u.vorname,
+        email: u.email,
+        rolle: u.rolle,
+        mfa_enabled: true,
+      },
+    });
+  } catch (e) {
+    console.error('MFA verify error:', e);
+    res.status(500).json({ error: 'Fehler bei der MFA-Loginprüfung' });
+  }
+});
+
+
 // ======================= CUSTOMERS =======================
 app.get('/api/customers', async (_req, res) => {
   try {
