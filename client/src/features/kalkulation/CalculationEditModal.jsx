@@ -13,7 +13,7 @@ export default function CalculationEditModal({ kalkId, open, onClose, onSaved })
   const [saving, setSaving]     = useState(false);
   const [error, setError]       = useState('');
   const [kunde, setKunde]       = useState('');
-  const [header, setHeader]     = useState({ stundensatz: 85, mwst_prozent: 19, status: 'neu' });
+  const [header, setHeader]     = useState({ stundensatz: 121, mwst_prozent: 19, status: 'neu' });
   const [pos, setPos]           = useState([]);
 
   useEffect(() => {

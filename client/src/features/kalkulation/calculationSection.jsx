@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronRight, ChevronDown } from 'lucide-react';
+import { ChevronRight, ChevronDown, Send } from 'lucide-react';
 import { fetchJSON } from 'services/api'; // Import hinzufügen
 
 export default function CalculationSection({
@@ -234,6 +234,27 @@ export default function CalculationSection({
     }
   };
 
+  // NEU: Funktion zum Senden der Kalkulation per E-Mail
+  const handleSendEmail = async (kalkulationId) => {
+    try {
+      const response = await fetchJSON(`/kalkulationen/${kalkulationId}/send-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: '', // Kann leer sein, wird vom Backend aus Kundendaten gefüllt
+          subject: `Kalkulation #${kalkulationId}`,
+          attachPdf: true
+        }),
+      });
+
+      alert('✅ Kalkulation wurde per E-Mail versendet!');
+      console.log('E-Mail versendet:', response);
+    } catch (error) {
+      console.error('❌ Fehler beim Senden der E-Mail:', error);
+      alert(`❌ Fehler beim Senden: ${error.message}`);
+    }
+  };
+
   return (
     <div className={`${bgClass} ${borderClass} rounded-lg shadow-sm border p-6`}>
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -461,7 +482,19 @@ export default function CalculationSection({
           </div>
         </div>
 
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-3">
+          {/* NEU: Senden-Button (nur wenn Kalkulation gespeichert wurde) */}
+          {calculationForm.kalkulations_id && (
+            <button
+              type="button"
+              onClick={() => handleSendEmail(calculationForm.kalkulations_id)}
+              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors flex items-center gap-2"
+            >
+              <Send size={16} />
+              Senden
+            </button>
+          )}
+          
           <button
             type="submit"
             disabled={loading}

@@ -69,12 +69,12 @@ export default function DashboardPage({ onLogout, userInfo }) {
   useEffect(() => { loadDashboardData(); }, [loadDashboardData]);
 
   const menuItems = [
-  { id: 'overview', label: 'Übersicht', icon: TrendingUp },
-  { id: 'customers', label: 'Kunden', icon: User },
-  { id: 'projects', label: 'Projekte', icon: Briefcase },   
-  { id: 'onboarding', label: 'Kunden-Onboarding', icon: Network },
-  { id: 'stundenkalkulation', label: 'Stundenkalkulation', icon: Calculator },
-];
+    { id: 'overview', label: 'Übersicht', icon: TrendingUp },
+    { id: 'customers', label: 'Kunden', icon: User },
+    { id: 'projects', label: 'Projekte', icon: Briefcase },   
+    { id: 'onboarding', label: 'Kunden-Onboarding', icon: Network },
+    { id: 'stundenkalkulation', label: 'Stundenkalkulation', icon: Calculator },
+  ];
 
   // 👇 Kontextwert: bietet setActive UND setActiveSection (Alias) an
   const ctxValue = {
@@ -101,10 +101,17 @@ export default function DashboardPage({ onLogout, userInfo }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...onboardingCustomerData,
-          infrastructure_data: infrastructureData, // <<<< alles mitgeben
+          infrastruktur: {
+            network: infrastructureData.netzwerk || {},
+            hardware: infrastructureData.hardware || [],
+            software: infrastructureData.software || [],
+            mail: infrastructureData.mail || {},
+            backup: infrastructureData.backup || {},
+            sonstiges: infrastructureData.sonstiges || { text: '' },
+          },
         }),
       });
-      
+
       console.log('✅ Kunde + Infrastruktur gespeichert:', resp);
 
       // Zahlen aktualisieren (Kunden/Projekte)
@@ -171,29 +178,29 @@ export default function DashboardPage({ onLogout, userInfo }) {
               />
             )}
 
-           {active === 'customers' && (
-            <Customers customers={customers} isDark={isDark} onNewCustomer={() => setActive('onboarding')} />
+            {active === 'customers' && (
+              <Customers customers={customers} isDark={isDark} onNewCustomer={() => setActive('onboarding')} />
             )}
 
             {active === 'projects' && (
               <LazyErrorBoundary>
                 <Suspense fallback={
-                <div className="flex items-center justify-center p-8">
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                <p className="text-gray-600 dark:text-gray-300">Lade Projekte…</p>
-              </div>
-              </div>
-              }>
-             <ProjectsSection
-              isDark={isDark}
-              customers={customers}
-              loading={loading}
-              onRefreshData={loadDashboardData}
-              />
-              </Suspense>
+                  <div className="flex items-center justify-center p-8">
+                    <div className="text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                      <p className="text-gray-600 dark:text-gray-300">Lade Projekte…</p>
+                    </div>
+                  </div>
+                }>
+                  <ProjectsSection
+                    isDark={isDark}
+                    customers={customers}
+                    loading={loading}
+                    onRefreshData={loadDashboardData}
+                  />
+                </Suspense>
               </LazyErrorBoundary>
-              )}
+            )}
 
             {active === 'onboarding' && (
               <LazyErrorBoundary>
@@ -239,8 +246,13 @@ export default function DashboardPage({ onLogout, userInfo }) {
                     setMwst={setMwst}
                     loading={loading}
                     onSubmit={async () => {
-                      try { await loadDashboardData(); setActive('overview'); }
-                      catch (error) { console.error('Fehler beim Aktualisieren nach Kalkulation:', error); setActive('overview'); }
+                      try { 
+                        await loadDashboardData(); 
+                        setActive('overview'); 
+                      } catch (error) { 
+                        console.error('Fehler beim Aktualisieren nach Kalkulation:', error); 
+                        setActive('overview'); 
+                      }
                     }}
                   />
                 </Suspense>

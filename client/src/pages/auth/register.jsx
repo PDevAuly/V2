@@ -62,10 +62,17 @@ const Register = () => {
 
     try {
       // ✅ statt fetch('/api/...') jetzt fetchJSON (nutzt REACT_APP_API_URL oder '/api')
-      await fetchJSON('/auth/register', {
-        method: 'POST',
-        body: JSON.stringify({ vorname, nachname, email, passwort }),
-      });
+    await fetchJSON('/auth/register', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    email,
+    password: passwort,   // Backend erwartet "password"
+    vorname,
+    name: nachname        // Backend erwartet "name"
+  }),
+});
+
 
       setMessage('Registrierung erfolgreich!');
       setTimeout(() => navigate('/login'), 1500);

@@ -66,7 +66,7 @@ const ResetPassword = () => {
     try {
       await fetchJSON('/auth/reset-password', {
         method: 'POST',
-        body: JSON.stringify({ token, newPassword }),
+        body: JSON.stringify({ token, password: newPassword }),
       });
       setMsg('Passwort erfolgreich geändert. Du wirst zum Login weitergeleitet…');
       setTimeout(() => navigate('/login'), 1500);

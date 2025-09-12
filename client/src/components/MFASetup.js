@@ -63,7 +63,9 @@ export default function MFASetup({ userInfo: propUserInfo, accessToken: propAcce
      'Content-Type': 'application/json',
      Authorization: `Bearer ${token}`,
    },
-   body: JSON.stringify({ user_id: userId }),
+   body: JSON.stringify(
+  userId ? { user_id: userId } : { email: userInfo?.email }
+),
  });
       if (!data?.qrDataUrl) throw new Error('Keine QR-Code-Daten erhalten');
 
@@ -91,7 +93,11 @@ export default function MFASetup({ userInfo: propUserInfo, accessToken: propAcce
      'Content-Type': 'application/json',
     Authorization: `Bearer ${token}`,
    },
-   body: JSON.stringify({ user_id: userId, token: verificationCode, secret: mfaSecret }),
+   body: JSON.stringify(
+  userId
+    ? { user_id: userId, token: verificationCode }
+    : { email: userInfo?.email, token: verificationCode }
+),
  });
 
       setBackupCodes(Array.isArray(data?.backup_codes) ? data.backup_codes : []);

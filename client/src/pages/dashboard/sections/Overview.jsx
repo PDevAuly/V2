@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
-import { User, Clock, TrendingUp, ChevronRight, Briefcase, Edit3 } from 'lucide-react';
+import { User, Clock, ChevronRight, Briefcase, Edit, Send } from 'lucide-react';
 import { euro, statusBadgeClass } from 'utils/format';
-import CalculationEditModal from 'features/kalkulation/CalculationEditModal';
+import { fetchJSON } from 'services/api';
+import CalculationEditModal from 'features/kalkulation/CalculationEditModal'; // ggf. Pfad anpassen
 
 export default function Overview({ stats = {}, kalkulationen = [], onGoCustomers, onGoProjects, onEdited }) {
+  const [editOpen, setEditOpen] = useState(false);
   const [editId, setEditId] = useState(null);
+  const [sending, setSending] = useState({});
 
   const safeStats = {
     activeCustomers: stats.activeCustomers ?? 0,
@@ -12,52 +15,68 @@ export default function Overview({ stats = {}, kalkulationen = [], onGoCustomers
     totalHours: stats.totalHours ?? 0,
   };
 
-  console.log('🔍 Debug Overview - stats:', stats);
-  console.log('🔍 Debug Overview - safeStats:', safeStats);
   const list = Array.isArray(kalkulationen) ? kalkulationen : [];
+
+  const openEdit = (id) => {
+    setEditId(id);
+    setEditOpen(true);
+  };
+
+  const sendCalculation = async (row) => {
+    if (!row?.kalkulations_id) return;
+    const id = row.kalkulations_id;
+    setSending((s) => ({ ...s, [id]: true }));
+    
+    try {
+      // 1) Erst ohne Empfänger senden -> Backend nutzt Kunden-E-Mail aus DB (falls vorhanden)
+      await fetchJSON(`/kalkulationen/${id}/send-email`, { 
+        method: 'POST', 
+        body: JSON.stringify({}) 
+      });
+      alert('E-Mail wurde versendet (PDF im Anhang).');
+    } catch (e) {
+      const msg = e?.message || '';
+      // 2) Falls keine Empfängeradresse hinterlegt: nachfragen
+      if (msg.toLowerCase().includes('empfängeradresse')) {
+        const to = window.prompt('Empfänger-E-Mail eingeben:');
+        if (!to) return;
+        
+        try {
+          await fetchJSON(`/kalkulationen/${id}/send-email`, {
+            method: 'POST',
+            body: JSON.stringify({ to }),
+          });
+          alert('E-Mail wurde versendet (PDF im Anhang).');
+        } catch (secondError) {
+          console.error(secondError);
+          alert('Senden fehlgeschlagen: ' + (secondError?.message || 'Unbekannter Fehler'));
+        }
+      } else {
+        console.error(e);
+        alert('Senden fehlgeschlagen: ' + (e?.message || 'Unbekannter Fehler'));
+      }
+    } finally {
+      setSending((s) => ({ ...s, [id]: false }));
+    }
+  };
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Dashboard Übersicht</h2>
-        <p className="text-gray-600 dark:text-gray-400">Aktuelle Statistiken und Kalkulationen</p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* KPI-Kacheln */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {[
-          { 
-            icon: User, 
-            bg: 'bg-blue-500', 
-            label: 'Kunden', 
-            value: safeStats.activeCustomers, 
-            clickable: true, 
-            onClick: onGoCustomers
-          },
-          { 
-            icon: Briefcase, 
-            bg: 'bg-purple-500', 
-            label: 'Projekte', 
-            value: safeStats.runningProjects,
-            clickable: true,
-            onClick: onGoProjects
-          },
-          { 
-            icon: Clock, 
-            bg: 'bg-orange-500', 
-            label: 'Stunden', 
-            value: Math.round(safeStats.totalHours) + 'h' 
-          },
-        ].map((item, index) => (
+          { icon: User, label: 'Aktive Kunden', value: safeStats.activeCustomers, onClick: onGoCustomers },
+          { icon: Briefcase, label: 'Laufende Projekte', value: safeStats.runningProjects, onClick: onGoProjects },
+          { icon: Clock, label: 'Gesamtstunden', value: safeStats.totalHours },
+        ].map((item, idx) => (
           <div
-            key={index}
+            key={idx}
             onClick={item.onClick}
-            className={`bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700
-              transition-all duration-200 hover:shadow-md hover:scale-[1.02] hover:border-gray-300 dark:hover:border-gray-600
-              ${item.onClick ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 active:scale-[0.98]' : ''}`}
+            className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-5 ${item.onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
           >
             <div className="flex items-center">
-              <div className={`w-8 h-8 ${item.bg} rounded-md flex items-center justify-center`}>
-                <item.icon className="w-4 h-4 text-white" />
+              <div className="p-2 rounded-md bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-200">
+                <item.icon className="w-5 h-5" />
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600 dark:text-gray-300 flex items-center">
@@ -72,6 +91,7 @@ export default function Overview({ stats = {}, kalkulationen = [], onGoCustomers
         ))}
       </div>
 
+      {/* Aktuelle Kalkulationen */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
         <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
           <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">Aktuelle Kalkulationen</h3>
@@ -81,31 +101,29 @@ export default function Overview({ stats = {}, kalkulationen = [], onGoCustomers
           <table className="w-full">
             <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
               <tr>
-                {['Kunde', 'Datum', 'Stunden', 'Gesamtpreis€', 'Status', 'Aktion'].map((h) => (
+                {['Kunde', 'Datum', 'Stunden', 'Gesamtpreis€', 'Status', 'Aktionen'].map((h) => (
                   <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                     {h}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-              {list.slice(0, 5).map((k, idx) => (
-                <tr key={k.kalkulations_id ?? `${k.kunde_id ?? 'k'}-${k.datum ?? 'd'}-${idx}`} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+              {list.map((k) => (
+                <tr key={k.kalkulations_id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                      {k.kunde_name || k.firmenname || '—'}
-                    </span>
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{k.firmenname || '—'}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm text-gray-900 dark:text-gray-300">
+                    <div className="text-sm text-gray-700 dark:text-gray-300">
                       {k.datum ? new Date(k.datum).toLocaleDateString('de-DE') : '—'}
-                    </span>
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm text-gray-900 dark:text-gray-300">{Number(k.gesamtzeit || 0)}h</span>
+                    <div className="text-sm text-gray-700 dark:text-gray-300">{k.gesamtzeit ?? '—'}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm text-gray-900 dark:text-gray-300">{k.gesamtpreis?.toLocaleString('de-DE')}</span>
+                    <div className="text-sm text-gray-700 dark:text-gray-300">{euro(k.sum_brutto ?? k.gesamtpreis)}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${statusBadgeClass(k.status)}`}>
@@ -113,13 +131,23 @@ export default function Overview({ stats = {}, kalkulationen = [], onGoCustomers
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <button
-                      onClick={() => setEditId(k.kalkulations_id)}
-                      className="inline-flex items-center px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800"
-                      title="Bearbeiten"
-                    >
-                      <Edit3 className="w-4 h-4 mr-1" /> Bearbeiten
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => openEdit(k.kalkulations_id)}
+                        className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
+                        title="Bearbeiten"
+                      >
+                        <Edit className="w-4 h-4 mr-1" /> Bearbeiten
+                      </button>
+                      <button
+                        onClick={() => sendCalculation(k)}
+                        disabled={!!sending[k.kalkulations_id]}
+                        className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded border border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-200 disabled:opacity-60"
+                        title="Kalkulation senden (PDF)"
+                      >
+                        <Send className="w-4 h-4 mr-1" /> {sending[k.kalkulations_id] ? 'Senden…' : 'Senden'}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -135,14 +163,15 @@ export default function Overview({ stats = {}, kalkulationen = [], onGoCustomers
         </div>
       </div>
 
-      {editId != null && (
-        <CalculationEditModal
-          open={true}
-          kalkId={editId}
-          onClose={() => setEditId(null)}
-          onSaved={onEdited}
-        />
-      )}
+      <CalculationEditModal
+        kalkId={editId}
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        onSaved={() => {
+          setEditOpen(false);
+          if (onEdited) onEdited(); // Dashboard-Daten neu laden
+        }}
+      />
     </div>
   );
 }

@@ -110,9 +110,9 @@ export default function Customers({ isDark }) {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      {customer.ansprechpartner_count > 0 ? (
+                      {customer.contact_count > 0 ? (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                          {customer.ansprechpartner_count}
+                          {customer.contact_count}
                         </span>
                       ) : (
                         <span className="text-gray-400 text-sm">Keine</span>

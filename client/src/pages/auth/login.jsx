@@ -39,17 +39,17 @@ const Login = ({ onLoginSuccess }) => {
     setLoading(true);
 
     try {
-      // ✅ statt fetch('/api/...') jetzt fetchJSON mit API_BASE (REACT_APP_API_URL oder '/api')
-      const data = await fetchJSON('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ email, passwort }),
-      });
+    const data = await fetchJSON('/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, 
+    body: JSON.stringify({ email, password: passwort }),
+   });
 
       // MFA verlangt?
-      if (data?.status === 'MFA_REQUIRED') {
+      if (data?.requireMfa) {
         setMfaRequired(true);
         setPendingUserId(data.user_id);
-        setPendingUserEmail(data.email);
+        setPendingUserEmail(data.user?.email);
         setMfaToken('');
 
         // Temporären Token für MFA-Verify setzen
@@ -59,7 +59,8 @@ const Login = ({ onLoginSuccess }) => {
       }
 
       // Erfolgreich ohne MFA
-      if (data?.user) {
+      if (data?.accessToken) {
+        localStorage.setItem('accessToken', data.accessToken);
         saveUserData(data.user);
         onLoginSuccess?.(data.user);
       } else {

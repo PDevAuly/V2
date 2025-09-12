@@ -65,14 +65,14 @@ export default function ProjectEditModal({
 
         // Netzwerk
         setNetzwerk({
-          internetzugangsart: data.netzwerk?.internetzugangsart || '',
-          firewall_modell: data.netzwerk?.firewall_modell || '',
-          feste_ip_vorhanden: !!data.netzwerk?.feste_ip_vorhanden,
-          ip_adresse: data.netzwerk?.ip_adresse || '',
-          vpn_einwahl_erforderlich: !!data.netzwerk?.vpn_einwahl_erforderlich,
-          aktuelle_vpn_user: data.netzwerk?.aktuelle_vpn_user ?? '',
-          geplante_vpn_user: data.netzwerk?.geplante_vpn_user ?? '',
-          informationen: data.netzwerk?.informationen || '',
+          internetzugangsart: data.network?.internetzugangsart || '',
+          firewall_modell: data.network?.firewall_modell || '',
+          feste_ip_vorhanden: !!data.network?.feste_ip_vorhanden,
+          ip_adresse: data.network?.ip_adresse || '',
+          vpn_einwahl_erforderlich: !!data.network?.vpn_einwahl_erforderlich,
+          aktuelle_vpn_user: data.network?.aktuelle_vpn_user ?? '',
+          geplante_vpn_user: data.network?.geplante_vpn_user ?? '',
+          informationen: data.network?.informationen || '',
         });
 
         // Hardware
@@ -189,7 +189,7 @@ export default function ProjectEditModal({
       // Backend PATCH akzeptiert array oder {hardwareList}, wir senden Arrays
       const payload = {
         status, // 'neu' | 'in Arbeit' | 'erledigt' (Schema erlaubt nur diese drei)
-        netzwerk: {
+        network: {
           ...netzwerk,
           aktuelle_vpn_user: asNum(netzwerk.aktuelle_vpn_user),
           geplante_vpn_user: asNum(netzwerk.geplante_vpn_user),
